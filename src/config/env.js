@@ -21,7 +21,10 @@ const env = {
     LAVA_HOST: process.env.LAVALINK_HOST || 'localhost',
     LAVA_PORT: parseInt(process.env.LAVALINK_PORT) || 2333,
     LAVA_PASS: process.env.LAVALINK_PASSWORD || 'youshallnotpass',
-    LAVA_SECURE: process.env.LAVALINK_SECURE === 'true'
+    LAVA_SECURE: process.env.LAVALINK_SECURE === 'true',
+
+    // Gemini API Key
+    GEMINI_API: process.env.GEMINI_API_KEY
 };
 
 // 🛡️ Sistem Validasi: Cek apakah ada data krusial yang kosong
