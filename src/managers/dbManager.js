@@ -1,15 +1,14 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+const env = require('../config/env'); // Panggil file env
 
-// Membuat instance koneksi Sequelize
 const sequelize = new Sequelize(
-    process.env.MYSQL_DATABASE, // Nama database (misal: naura_db)
-    process.env.MYSQL_USER,     // Username (misal: root)
-    process.env.MYSQL_PASSWORD, // Password
+    env.DB_NAME, 
+    env.DB_USER, 
+    env.DB_PASS, 
     {
-        host: process.env.MYSQL_HOST || 'localhost',
+        host: env.DB_HOST,
         dialect: 'mysql',
-        logging: false, // Ubah ke console.log untuk melihat raw SQL query saat debugging
+        logging: false, 
     }
 );
 
@@ -17,8 +16,6 @@ const connectToDatabase = async () => {
     try {
         await sequelize.authenticate();
         console.log('\x1b[32m[🍃 DATABASE]\x1b[0m Berhasil terhubung ke MySQL.');
-        
-        // alter: true akan memperbarui kolom tabel otomatis jika ada perubahan di file Model
         await sequelize.sync({ alter: true });
         console.log('\x1b[36m[📦 DATABASE]\x1b[0m Tabel berhasil disinkronisasi.');
     } catch (error) {
