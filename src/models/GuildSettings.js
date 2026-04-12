@@ -41,11 +41,15 @@ const GuildSettings = sequelize.define('GuildSettings', {
         type: DataTypes.JSON,
         defaultValue: { counting: null, tod: null }
     },
+
+    isPremium: { type: DataTypes.BOOLEAN, defaultValue: false },
+    premiumUntil: { type: DataTypes.DATE, allowNull: true },
     
     countingGame: {
         type: DataTypes.JSON,
         defaultValue: { currentNumber: 0, lastUser: null }
     }
+    
 }, {
     tableName: 'guild_settings',
     timestamps: false
