@@ -1,33 +1,36 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../managers/dbManager');
 
-const userProfileSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true },
-    
-    economy: {
-        wallet: { type: Number, default: 0 },
-        bank: { type: Number, default: 0 }
-        // lastDaily, lastWork, dll dihapus karena sekarang menggunakan objek cooldowns di bawah
+const UserProfile = sequelize.define('UserProfile', {
+    userId: { 
+        type: DataTypes.STRING, 
+        allowNull: false, 
+        primaryKey: true // Menjadikan userId sebagai kunci utama
     },
     
-    inventory: { type: Array, default: [] },
+    // --- ECONOMY (Dipisah agar mudah di-ranking/leaderboard) ---
+    economy_wallet: { type: DataTypes.INTEGER, defaultValue: 0 },
+    economy_bank: { type: DataTypes.INTEGER, defaultValue: 0 },
     
-    // 👇 SISTEM COOLDOWN TERPUSAT (INI YANG MEMPERBAIKI BUG SPAM) 👇
-    cooldowns: { type: Object, default: {} },
+    // --- DATA FLEKSIBEL ---
+    // MySQL mendukung tipe JSON untuk menyimpan array/object
+    inventory: { type: DataTypes.JSON, defaultValue: [] },
+    cooldowns: { type: DataTypes.JSON, defaultValue: {} },
     
-    minigames: {
-        mathScore: { type: Number, default: 0 },
-        triviaScore: { type: Number, default: 0 },
-        rpsWin: { type: Number, default: 0 },
-        tttWin: { type: Number, default: 0 },
-        wordleWin: { type: Number, default: 0 }
-    },
+    // --- MINIGAMES ---
+    minigame_mathScore: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_triviaScore: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_rpsWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_tttWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_wordleWin: { type: DataTypes.INTEGER, defaultValue: 0 },
     
-    // 👇 SISTEM LEVELING 👇
-    leveling: {
-        xp: { type: Number, default: 0 },
-        level: { type: Number, default: 1 },
-        lastXp: { type: Date } // Untuk mencegah spam XP beruntun
-    }
+    // --- LEVELING ---
+    leveling_xp: { type: DataTypes.INTEGER, defaultValue: 0 },
+    leveling_level: { type: DataTypes.INTEGER, defaultValue: 1 },
+    leveling_lastXp: { type: DataTypes.DATE, allowNull: true }
+}, {
+    tableName: 'user_profiles',
+    timestamps: false // Set true jika ingin kolom createdAt dan updatedAt otomatis
 });
 
-module.exports = mongoose.model('UserProfile', userProfileSchema);
+module.exports = UserProfile;
