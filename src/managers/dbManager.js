@@ -1,22 +1,29 @@
-const mongoose = require('mongoose');
+const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-const connectToMongoDB = async () => {
-    if (!process.env.MONGO_URI) {
-        console.log('\x1b[33m[⚠️ DATABASE]\x1b[0m MongoDB URI not found in .env file. Skipping connection.');
-        return;
+// Membuat instance koneksi Sequelize
+const sequelize = new Sequelize(
+    process.env.MYSQL_DATABASE, // Nama database (misal: naura_db)
+    process.env.MYSQL_USER,     // Username (misal: root)
+    process.env.MYSQL_PASSWORD, // Password
+    {
+        host: process.env.MYSQL_HOST || 'localhost',
+        dialect: 'mysql',
+        logging: false, // Ubah ke console.log untuk melihat raw SQL query saat debugging
     }
+);
 
+const connectToDatabase = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
-        console.log(`\x1b[32m[🍃 DATABASE]\x1b[0m Successfully connected to MongoDB.`);
+        await sequelize.authenticate();
+        console.log('\x1b[32m[🍃 DATABASE]\x1b[0m Berhasil terhubung ke MySQL.');
+        
+        // alter: true akan memperbarui kolom tabel otomatis jika ada perubahan di file Model
+        await sequelize.sync({ alter: true });
+        console.log('\x1b[36m[📦 DATABASE]\x1b[0m Tabel berhasil disinkronisasi.');
     } catch (error) {
-        console.error(`\x1b[31m[❌ DATABASE]\x1b[0m Error connecting to MongoDB:`, error);
+        console.error('\x1b[31m[❌ DATABASE]\x1b[0m Gagal terhubung ke MySQL:', error);
     }
 };
 
-mongoose.connection.on('disconnected', () => {
-    console.log('\x1b[33m[⚠️ DATABASE]\x1b[0m Disconnected from MongoDB.');
-});
-
-module.exports = { connectToMongoDB };
+module.exports = { sequelize, connectToDatabase };
