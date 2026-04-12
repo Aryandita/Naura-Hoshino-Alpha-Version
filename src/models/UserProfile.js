@@ -23,6 +23,15 @@ const UserProfile = sequelize.define('UserProfile', {
     minigame_rpsWin: { type: DataTypes.INTEGER, defaultValue: 0 },
     minigame_tttWin: { type: DataTypes.INTEGER, defaultValue: 0 },
     minigame_wordleWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+
+    isPremium: { 
+        type: DataTypes.BOOLEAN, 
+        defaultValue: false 
+    },
+    premiumUntil: { 
+        type: DataTypes.DATE, 
+        allowNull: true 
+    },
     
     // --- LEVELING ---
     leveling_xp: { type: DataTypes.INTEGER, defaultValue: 0 },
