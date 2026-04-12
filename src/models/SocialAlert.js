@@ -1,12 +1,18 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../managers/dbManager');
 
-const socialAlertSchema = new mongoose.Schema({
-    guildId: { type: String, required: true },
-    discordChannelId: { type: String, required: true },
-    platform: { type: String, required: true }, // 'youtube', 'tiktok', dll
-    name: { type: String, required: true }, // Nama channel/akun
-    feedUrl: { type: String, required: true }, // Link RSS Feed rahasia
-    lastPostLink: { type: String, default: null } // Menyimpan link postingan terakhir agar tidak spam
+const SocialAlert = sequelize.define('SocialAlert', {
+    // Sequelize otomatis membuat kolom 'id' berjenis Integer Auto Increment sebagai Primary Key jika tidak didefinisikan.
+    
+    guildId: { type: DataTypes.STRING, allowNull: false },
+    discordChannelId: { type: DataTypes.STRING, allowNull: false },
+    platform: { type: DataTypes.STRING, allowNull: false }, // 'youtube', 'tiktok', dll
+    name: { type: DataTypes.STRING, allowNull: false },
+    feedUrl: { type: DataTypes.STRING, allowNull: false },
+    lastPostLink: { type: DataTypes.STRING, allowNull: true }
+}, {
+    tableName: 'social_alerts',
+    timestamps: true // Berguna untuk mengetahui kapan alert ini didaftarkan
 });
 
-module.exports = mongoose.model('SocialAlert', socialAlertSchema);
+module.exports = SocialAlert;
