@@ -1,36 +1,54 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../managers/dbManager');
 
-const guildSettingsSchema = new mongoose.Schema({
-    guildId: { type: String, required: true, unique: true },
-    music: {
-        twentyFourSeven: { type: Boolean, default: false },
-        defaultVolume: { type: Number, default: 100 },
-        textChannel: { type: String, default: null },
-        voiceChannel: { type: String, default: null },
-    	ticket: { channelId: String, categoryId: String },
-    	minecraft: { ip: String, port: Number },
-    	tempVoice: { channelId: String, categoryId: String },
-    	stickyMessage: { channelId: String, message: String },
-    	announcementChannel: String,
-    	autoRole: String,
-    	autoReplies: [{ trigger: String, response: String }]
+const GuildSettings = sequelize.define('GuildSettings', {
+    guildId: { 
+        type: DataTypes.STRING, 
+        allowNull: false, 
+        primaryKey: true 
     },
+    
+    // Menggabungkan pengaturan ke dalam objek JSON
+    music: { 
+        type: DataTypes.JSON, 
+        defaultValue: {
+            twentyFourSeven: false,
+            defaultVolume: 100,
+            textChannel: null,
+            voiceChannel: null
+        }
+    },
+    
+    settings: {
+        type: DataTypes.JSON,
+        defaultValue: {
+            ticket: { channelId: null, categoryId: null },
+            minecraft: { ip: null, port: null },
+            tempVoice: { channelId: null, categoryId: null },
+            stickyMessage: { channelId: null, message: null },
+            announcementChannel: null,
+            autoRole: null,
+            autoReplies: []
+        }
+    },
+
     system: {
-        prefix: { type: String, default: 'n!' },
-        language: { type: String, default: 'id' }
-    }, // <-- Kurung kurawal penutup untuk 'system' dan koma ditambahkan di sini
-    
-    // --- PENGATURAN CHANNEL GAME OTOMATIS ---
-    channels: {
-        counting: { type: String, default: null },
-        tod: { type: String, default: null }
+        type: DataTypes.JSON,
+        defaultValue: { prefix: 'n!', language: 'id' }
     },
     
-    // --- DATA STATE GAME ---
+    channels: {
+        type: DataTypes.JSON,
+        defaultValue: { counting: null, tod: null }
+    },
+    
     countingGame: {
-        currentNumber: { type: Number, default: 0 },
-        lastUser: { type: String, default: null }
+        type: DataTypes.JSON,
+        defaultValue: { currentNumber: 0, lastUser: null }
     }
+}, {
+    tableName: 'guild_settings',
+    timestamps: false
 });
 
-module.exports = mongoose.model('GuildSettings', guildSettingsSchema);
+module.exports = GuildSettings;
