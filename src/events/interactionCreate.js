@@ -30,7 +30,6 @@ module.exports = {
             if (interaction.customId === 'ticket_create') {
                 const guildData = await GuildSettings.findOne({ where: { guildId: interaction.guild.id } });
                 
-                // Pengecekan aman menggunakan optional chaining
                 if (!guildData || !guildData.settings || !guildData.settings.ticket || !guildData.settings.ticket.categoryId) {
                     return interaction.reply({ content: '❌ Sistem tiket belum disetup oleh admin.', ephemeral: true });
                 }
@@ -49,7 +48,7 @@ module.exports = {
                     ]
                 });
 
-                // Penyesuaian warna dan bahasa publik
+                // Warna Embed Aqua KHUSUS untuk Anda, kuning untuk publik. Sapaan lama dihapus.
                 const embedColor = env.OWNER_IDS.includes(interaction.user.id) ? '#00FFFF' : '#f1c40f';
                 const embedTicket = new EmbedBuilder()
                     .setColor(embedColor)
@@ -66,7 +65,7 @@ module.exports = {
             }
 
             if (interaction.customId === 'ticket_close') {
-                return interaction.reply({ content: '🔒 Tiket akan dihapus dalam 5 detik...', ephemeral: false }).then(() => {
+                return interaction.reply({ content: '🔒 Tiket akan ditutup dalam 5 detik...', ephemeral: false }).then(() => {
                     setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
                 });
             }
@@ -77,35 +76,35 @@ module.exports = {
             if (interaction.customId.startsWith('tvc_')) {
                 const memberVoice = interaction.member.voice.channel;
                 if (!memberVoice) return interaction.reply({ content: '❌ Kamu harus berada di dalam Voice Channel!', ephemeral: true });
-                if (!memberVoice.permissionsFor(interaction.member).has('ManageChannels')) return interaction.reply({ content: '❌ Kamu bukan pemilik Voice Channel ini.', ephemeral: true });
+                if (!memberVoice.permissionsFor(interaction.member).has(PermissionFlagsBits.ManageChannels)) return interaction.reply({ content: '❌ Kamu bukan pemilik Voice Channel ini.', ephemeral: true });
 
                 if (interaction.customId === 'tvc_lock') {
-                    await memberVoice.permissionOverwrites.edit(interaction.guild.id, { Connect: false });
+                    await memberVoice.permissionOverwrites.edit(interaction.guild.id, { [PermissionFlagsBits.Connect]: false });
                     return interaction.reply({ content: '🔒 Voice Channel berhasil **dikunci**!', ephemeral: true });
                 }
                 
                 if (interaction.customId === 'tvc_unlock') {
-                    await memberVoice.permissionOverwrites.edit(interaction.guild.id, { Connect: null });
+                    await memberVoice.permissionOverwrites.edit(interaction.guild.id, { [PermissionFlagsBits.Connect]: null });
                     return interaction.reply({ content: '🔓 Voice Channel berhasil **dibuka**!', ephemeral: true });
                 }
 
                 if (interaction.customId === 'tvc_rename') {
                     const modal = new ModalBuilder().setCustomId('modal_tvc_rename').setTitle('Ubah Nama Voice Channel');
-                    const inputName = new TextInputBuilder().setCustomId('input_name').setLabel('Nama Baru').setPlaceholder('Contoh: Ruang Mabar').setStyle(TextInputStyle.Short).setMaxLength(30).setRequired(true);
+                    const inputName = new TextInputBuilder().setCustomId('input_name').setLabel('Nama Baru').setStyle(TextInputStyle.Short).setMaxLength(30).setRequired(true);
                     modal.addComponents(new ActionRowBuilder().addComponents(inputName));
                     return interaction.showModal(modal);
                 }
 
                 if (interaction.customId === 'tvc_limit') {
                     const modal = new ModalBuilder().setCustomId('modal_tvc_limit').setTitle('Atur Limit Member');
-                    const inputLimit = new TextInputBuilder().setCustomId('input_limit').setLabel('Batas (0 - 99, 0 = Bebas)').setPlaceholder('Contoh: 5').setStyle(TextInputStyle.Short).setMaxLength(2).setRequired(true);
+                    const inputLimit = new TextInputBuilder().setCustomId('input_limit').setLabel('Batas (0 - 99, 0 = Bebas)').setStyle(TextInputStyle.Short).setMaxLength(2).setRequired(true);
                     modal.addComponents(new ActionRowBuilder().addComponents(inputLimit));
                     return interaction.showModal(modal);
                 }
             }
         }
 
-        // 3. MODALS ROUTER (TempVoice)
+        // 3. MODALS ROUTER
         if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('modal_tvc_')) {
                 const memberVoice = interaction.member.voice.channel;
@@ -114,7 +113,7 @@ module.exports = {
                 if (interaction.customId === 'modal_tvc_rename') {
                     const newName = interaction.fields.getTextInputValue('input_name');
                     await memberVoice.setName(newName).catch(() => {});
-                    return interaction.reply({ content: `✅ Nama Voice diubah ke **${newName}**! *(Limit API Discord: 2x / 10 menit)*`, ephemeral: true });
+                    return interaction.reply({ content: `✅ Nama Voice diubah ke **${newName}**!`, ephemeral: true });
                 }
 
                 if (interaction.customId === 'modal_tvc_limit') {
