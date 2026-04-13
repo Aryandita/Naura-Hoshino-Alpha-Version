@@ -2,7 +2,6 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const mongoose = require('mongoose');
 const os = require('os'); 
 
 const { CommandHandler } = require('./src/managers/CommandHandler');
@@ -10,12 +9,12 @@ const MusicManager = require('./src/managers/musicManager');
 const redisManager = require('./src/managers/redisManager');
 const { logError } = require('./src/managers/logger'); 
 const RssManager = require('./src/managers/rssManager');
-const env = require('./src/config/env'); // Memanggil configurasi environment
+const { connectToDatabase } = require('./src/managers/dbManager'); // Memanggil MySQL
+const env = require('./src/config/env'); 
 
 // ==========================================
 // 🤖 1. INISIALISASI CLIENT DISCORD
 // ==========================================
-// Client dideklarasikan lebih awal agar bisa digunakan oleh Anti-Crash
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -37,7 +36,6 @@ const sendErrorLog = async (err, type) => {
     console.error(`\n\x1b[41m\x1b[37m 💥 ANTI-CRASH \x1b[0m \x1b[31m${type}\x1b[0m`);
     console.error(err);
     
-    // Mengirim log error ke DM Developer Aryan / Ryaa
     if (env.OWNER_IDS && env.OWNER_IDS.length > 0) {
         try {
             const ownerId = env.OWNER_IDS[0]; 
@@ -45,7 +43,7 @@ const sendErrorLog = async (err, type) => {
             
             if (owner) {
                 const errEmbed = new EmbedBuilder()
-                    .setColor('#00FFFF') // Warna Aqua Khusus Anda
+                    .setColor('#00FFFF') 
                     .setTitle(`⚠️ Naura Versi 1.0.0 - ${type}`)
                     .setDescription(`\`\`\`js\n${String(err?.stack || err).substring(0, 4000)}\n\`\`\``)
                     .setTimestamp();
@@ -59,7 +57,7 @@ const sendErrorLog = async (err, type) => {
 };
 
 process.on('unhandledRejection', (reason, promise) => {
-    if (reason && reason.code === 10062) return; // Abaikan error "Unknown interaction" bawaan Discord
+    if (reason && reason.code === 10062) return; 
     sendErrorLog(reason, 'Unhandled Rejection');
 });
 
@@ -109,7 +107,7 @@ async function startBot() {
     console.log('\n\x1b[46m\x1b[30m ⚙️ BOOT SEQUENCE \x1b[0m \x1b[36mMemulai proses inisialisasi sistem...\x1b[0m\n');
 
     let sysStatus = {
-        mongo: '\x1b[31m🔴 OFFLINE   \x1b[0m',
+        db:    '\x1b[31m🔴 OFFLINE   \x1b[0m',
         redis: '\x1b[33m🟡 SKIPPED   \x1b[0m',
         music: '\x1b[32m🟢 INITIALIZED\x1b[0m',
         cmds:  '\x1b[33m🟡 BACKGROUND\x1b[0m', 
@@ -118,7 +116,7 @@ async function startBot() {
 
     try {
         process.stdout.write('\x1b[43m\x1b[30m ⏳ API \x1b[0m \x1b[33mSinkronisasi Slash Commands ke Discord...\x1b[0m ');
-        syncCommandsToDiscord()
+        await syncCommandsToDiscord()
             .then(count => console.log(`\x1b[42m\x1b[30m OK \x1b[0m \x1b[32m(${count} cmds)\x1b[0m`))
             .catch(err => console.log(`\x1b[41m\x1b[37m GAGAL \x1b[0m \x1b[31m${err.message}\x1b[0m`));
 
@@ -126,11 +124,14 @@ async function startBot() {
         const commandHandler = new CommandHandler(client, commandPath);
         await commandHandler.load();
 
-        if (process.env.MONGODB_URI) {
-            await mongoose.connect(process.env.MONGODB_URI);
-            sysStatus.mongo = '\x1b[32m🟢 CONNECTED \x1b[0m';
-            console.log('\x1b[42m\x1b[30m 🗄️ DATABASE \x1b[0m \x1b[32mMongoDB Berhasil Terhubung!\x1b[0m');
+        // Menyambungkan ke MySQL Database secara langsung
+        try {
+            await connectToDatabase();
+            sysStatus.db = '\x1b[32m🟢 CONNECTED \x1b[0m';
+        } catch (error) {
+            sysStatus.db = '\x1b[31m🔴 ERROR     \x1b[0m';
         }
+
         if (process.env.REDIS_URL) {
             await redisManager.connect();
             sysStatus.redis = '\x1b[32m🟢 CONNECTED \x1b[0m';
@@ -140,16 +141,20 @@ async function startBot() {
             if (client.musicManager.initialize) client.musicManager.initialize();
             if (client.rssManager.init) client.rssManager.init(); 
 
+            // Kalkulasi Hardware
             const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
             const usedRam = ((os.totalmem() - os.freemem()) / 1024 / 1024 / 1024).toFixed(2);
-            const osUptime = (os.uptime() / 3600).toFixed(2);
             
+            // Format string agar tabel ASCII tetap sejajar sempurna
             const cpuStr = os.cpus()[0].model.trim().substring(0, 48).padEnd(49);
             const ramStr = `${usedRam} GB / ${totalRam} GB`.padEnd(49);
             const platStr = `${os.platform()} ${os.arch()}`.substring(0, 48).padEnd(49);
-            
             const tagStr = client.user.tag.padEnd(49);
             const ownerStr = 'Developer Aryan / Ryaa'.padEnd(49);
+            
+            // Format ping agar lebar kolom tetap pas (Max 14 char)
+            let pingText = `🟢 ONLINE (${client.ws.ping}ms)`;
+            if (pingText.length < 18) pingText = pingText.padEnd(18);
 
             console.log(`
 \x1b[38;5;51m╔══════════════════════════════════════════════════════════════════════════╗\x1b[0m
@@ -168,9 +173,9 @@ async function startBot() {
 \x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m└─ Platform :\x1b[0m \x1b[38;5;15m${platStr}\x1b[0m\x1b[38;5;51m║\x1b[0m
 \x1b[38;5;51m║\x1b[0m                                                                          \x1b[38;5;51m║\x1b[0m
 \x1b[38;5;51m║\x1b[0m \x1b[38;5;226m✦ STATUS MODUL & DATABASE\x1b[0m                                                \x1b[38;5;51m║\x1b[0m
-\x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m├─ MongoDB  :\x1b[0m ${sysStatus.mongo} \x1b[38;5;246m│ Lavalink   :\x1b[0m ${sysStatus.music}      \x1b[38;5;51m║\x1b[0m
+\x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m├─ Database :\x1b[0m ${sysStatus.db} \x1b[38;5;246m│ Lavalink   :\x1b[0m ${sysStatus.music}      \x1b[38;5;51m║\x1b[0m
 \x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m├─ Redis    :\x1b[0m ${sysStatus.redis} \x1b[38;5;246m│ Commands   :\x1b[0m ${sysStatus.cmds}    \x1b[38;5;51m║\x1b[0m
-\x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m└─ Discord  :\x1b[0m \x1b[38;5;82m🟢 ONLINE (${client.ws.ping}ms)\x1b[0m \x1b[38;5;246m│ RSS Alerts :\x1b[0m ${sysStatus.rss}    \x1b[38;5;51m║\x1b[0m
+\x1b[38;5;51m║\x1b[0m   \x1b[38;5;246m└─ Discord  :\x1b[0m \x1b[38;5;82m${pingText}\x1b[0m \x1b[38;5;246m│ RSS Alerts :\x1b[0m ${sysStatus.rss}    \x1b[38;5;51m║\x1b[0m
 \x1b[38;5;51m╚══════════════════════════════════════════════════════════════════════════╝\x1b[0m
 
 \x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32mSemua fitur siap Aryan! Naura v1.0.0 siap bertugas ^.^\x1b[0m
