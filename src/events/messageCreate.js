@@ -15,7 +15,7 @@ module.exports = async (client, message) => {
     if (message.author.bot) return;
 
     // ==========================================
-    // 📩 FITUR 1: MODMAIL (DM KE BOT)
+    // 📩 FITUR MODMAIL (DM KE BOT)
     // ==========================================
     if (message.channel.type === ChannelType.DM) {
         const staffGuild = client.guilds.cache.get(env.STAFF_GUILD);
@@ -64,67 +64,57 @@ module.exports = async (client, message) => {
         return; 
     }
 
+    
     // ==========================================
-    // 📤 FITUR 2: MODMAIL (STAFF MEMBALAS KE DM)
+    // 🛡️ FITUR ADVANCED AUTOMOD
     // ==========================================
-    const thread = await ModMail.findOne({ where: { channelId: message.channel.id, closed: false } });
-    if (thread) {
-        if (message.content.toLowerCase() === 'n!close') {
-            thread.closed = true;
-            await thread.save();
-            try {
-                const user = await client.users.fetch(thread.userId);
-                await user.send({ embeds: [new EmbedBuilder().setColor('#E74C3C').setTitle('🔒 Tiket Ditutup').setDescription('Sesi ModMail ini telah diselesaikan oleh Staff.')] });
-            } catch (e) {}
-            await message.channel.send('Merapikan channel dalam 5 detik...');
-            setTimeout(() => message.channel.delete().catch(() => {}), 5000);
-            return;
-        }
+    let [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } });
+    const automod = settings.settings?.automod || {};
 
-        try {
-            const user = await client.users.fetch(thread.userId);
-            const replyEmbed = new EmbedBuilder()
-                .setAuthor({ name: 'Balasan dari Tim Support', iconURL: client.user.displayAvatarURL() })
-                .setDescription(message.content || '*Pesan hanya berisi lampiran*')
-                .setColor('#00FFFF')
-                .setFooter({ text: `Staff: ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
-                .setTimestamp();
-
-            let files = [];
-            if (message.attachments.size > 0) files = message.attachments.map(a => new AttachmentBuilder(a.url, { name: a.name }));
-
-            await user.send({ embeds: [replyEmbed], files: files });
-            await message.react('📨');
-        } catch (error) {
-            await message.channel.send({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ Gagal mengirim pesan ke user (DM tertutup).')] });
-        }
-        return; 
-    }
-
-    // ==========================================
-    // 🛡️ FITUR 3: AUTOMOD (Bug Diperbaiki)
-    // ==========================================
-    // Menambahkan optional chaining (?.) untuk mencegah crash jika message.member null
-    if (message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-        const content = message.content.toLowerCase();
+    if (message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         let isViolation = false;
-        let violationType = '';
+        let reason = '';
 
-        if (badWords.some(word => content.includes(word))) {
-            isViolation = true;
-            violationType = 'Menggunakan Kata Kasar';
-        } else if (linkRegex.test(content) && !content.includes('tenor.com') && !content.includes('discordapp.') && !content.includes('discord.com')) {
-            // Pengecualian ditambah agar gambar dari Discord CDN tidak dihapus
-            isViolation = true;
-            violationType = 'Mengirim Link Ilegal';
+        // 1. Anti-Invite
+        if (automod.antiInvite && /(discord\.gg|discord\.com\/invite)/gi.test(message.content)) {
+            isViolation = true; reason = 'Mengirim Undangan Server';
+        }
+        // 2. Anti-Caps (Min 10 char, > 70% Caps)
+        else if (automod.antiCaps && message.content.length > 10) {
+            const capsCount = message.content.replace(/[^A-Z]/g, "").length;
+            if (capsCount / message.content.length > 0.7) { isViolation = true; reason = 'Terlalu banyak HURUF KAPITAL'; }
+        }
+        // 3. Mass Mention
+        else if (message.mentions.users.size > (automod.massMention || 5)) {
+            isViolation = true; reason = 'Mass Mention (Spam Tag)';
         }
 
         if (isViolation) {
             await message.delete().catch(() => {});
-            const warningMsg = await message.channel.send(`⚠️ <@${message.author.id}>, pesan Anda dihapus karena: **${violationType}**.`);
-            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
-            return; 
+            return message.channel.send(`⚠️ <@${message.author.id}>, pesan dihapus: **${reason}**`).then(m => setTimeout(() => m.delete(), 5000));
         }
+    }
+
+    // ==========================================
+    // 💤 FITUR 3: AFK SYSTEM (PORTED FROM MEEKLY)
+    // ==========================================
+    // 1. Cek jika user yang di-tag sedang AFK
+    if (message.mentions.users.size > 0) {
+        const mentioned = message.mentions.users.first();
+        const profile = await UserProfile.findByPk(mentioned.id);
+        if (profile?.afk_reason) {
+            const timeAgo = `<t:${Math.floor(profile.afk_timestamp / 1000)}:R>`;
+            message.reply({ content: `💤 **${mentioned.username}** sedang AFK: *${profile.afk_reason}* (${timeAgo})` });
+        }
+    }
+
+    // 2. Hapus status AFK jika user mengirim pesan
+    const userProfile = await UserProfile.findByPk(message.author.id);
+    if (userProfile?.afk_reason) {
+        userProfile.afk_reason = null;
+        userProfile.afk_timestamp = null;
+        await userProfile.save();
+        message.reply({ content: `👋 Selamat datang kembali <@${message.author.id}>! Naura sudah menghapus status AFK-mu.` }).then(m => setTimeout(() => m.delete(), 5000));
     }
 
     // ==========================================
@@ -136,7 +126,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🔢 FITUR 4: GAME BERHITUNG & TRUTH OR DARE
+    // 🔢 FITUR GAME BERHITUNG & TRUTH OR DARE
     // ==========================================
     if (message.guild && settings?.channels?.counting === message.channel.id) {
         const inputMessage = message.content.trim();
@@ -166,7 +156,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🤖 FITUR 5: CHATBOT AI (MENTION & REPLY)
+    // 🤖 FITUR CHATBOT AI (MENTION & REPLY)
     // ==========================================
     const isMentioned = message.mentions.has(client.user);
     let isReplyToBot = false;
@@ -201,7 +191,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🌟 FITUR 6: SISTEM LEVELING & XP
+    // 🌟 FITUR SISTEM LEVELING & XP
     // ==========================================
     if (message.guild) {
         try {
@@ -211,7 +201,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // ⚡ FITUR 7: HYBRID PREFIX HANDLER
+    // ⚡ FITUR HYBRID PREFIX HANDLER
     // ==========================================
     const prefix = env.PREFIX;
     if (!message.content.startsWith(prefix)) return;
