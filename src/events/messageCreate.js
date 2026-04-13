@@ -26,7 +26,8 @@ module.exports = async (client, message) => {
         const staffGuild = client.guilds.cache.get(env.STAFF_GUILD);
         if (!staffGuild) return message.reply('❌ Sistem ModMail sedang offline.');
 
-        let thread = await ModMail.findOne({ where: { userId: message.author.id, closed: false } });
+        let thread = null;
+        try { thread = await ModMail.findOne({ where: { userId: message.author.id, closed: false } }); } catch(e){}
 
         if (!thread) {
             try {
@@ -40,7 +41,7 @@ module.exports = async (client, message) => {
                 thread = await ModMail.create({ userId: message.author.id, channelId: channel.id });
                 
                 const newTicketEmbed = new EmbedBuilder()
-                    .setColor(ui.getColor('primary'))
+                    .setColor(ui.getColor ? ui.getColor('primary') : '#00FFFF')
                     .setTitle('🆕 Tiket ModMail Baru')
                     .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Akun Dibuat:** <t:${Math.floor(message.author.createdTimestamp / 1000)}:R>`)
                     .setFooter({ text: 'Ketik pesan di sini untuk membalas. Ketik n!close untuk menutup.' });
@@ -54,7 +55,7 @@ module.exports = async (client, message) => {
 
         const staffChannel = client.channels.cache.get(thread.channelId);
         if (staffChannel) {
-            const embedColor = env.OWNER_IDS.includes(message.author.id) ? ui.getColor('primary') : '#3498DB';
+            const embedColor = env.OWNER_IDS.includes(message.author.id) ? (ui.getColor ? ui.getColor('primary') : '#00FFFF') : '#3498DB';
             const embed = new EmbedBuilder()
                 .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
                 .setDescription(message.content || '*Pesan hanya berisi lampiran*')
@@ -64,7 +65,7 @@ module.exports = async (client, message) => {
             let files = [];
             if (message.attachments.size > 0) files = message.attachments.map(a => new AttachmentBuilder(a.url, { name: a.name }));
             await staffChannel.send({ embeds: [embed], files: files });
-            await message.react(ui.getEmoji('success'));
+            await message.react(ui.getEmoji ? ui.getEmoji('success') : '✅');
         }
         return; 
     }
@@ -72,14 +73,16 @@ module.exports = async (client, message) => {
     // ==========================================
     // 📤 FITUR 2: MODMAIL (STAFF MEMBALAS KE DM)
     // ==========================================
-    const thread = await ModMail.findOne({ where: { channelId: message.channel.id, closed: false } });
+    let thread = null;
+    try { thread = await ModMail.findOne({ where: { channelId: message.channel.id, closed: false } }); } catch(e){}
+    
     if (thread) {
         if (message.content.toLowerCase() === 'n!close') {
             thread.closed = true;
             await thread.save();
             try {
                 const user = await client.users.fetch(thread.userId);
-                await user.send({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setTitle('🔒 Tiket Ditutup').setDescription('Sesi ModMail ini telah diselesaikan oleh Staff.')] });
+                await user.send({ embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('🔒 Tiket Ditutup').setDescription('Sesi ModMail ini telah diselesaikan oleh Staff.')] });
             } catch (e) {}
             await message.channel.send('Merapikan channel dalam 5 detik...');
             setTimeout(() => message.channel.delete().catch(() => {}), 5000);
@@ -91,7 +94,7 @@ module.exports = async (client, message) => {
             const replyEmbed = new EmbedBuilder()
                 .setAuthor({ name: 'Balasan dari Tim Support', iconURL: client.user.displayAvatarURL() })
                 .setDescription(message.content || '*Pesan hanya berisi lampiran*')
-                .setColor(ui.getColor('primary'))
+                .setColor('#00FFFF')
                 .setFooter({ text: `Staff: ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
                 .setTimestamp();
 
@@ -101,49 +104,40 @@ module.exports = async (client, message) => {
             await user.send({ embeds: [replyEmbed], files: files });
             await message.react('📨');
         } catch (error) {
-            await message.channel.send({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setDescription('❌ Gagal mengirim pesan ke user (DM tertutup).')] });
+            await message.channel.send({ embeds: [new EmbedBuilder().setColor('#FF0000').setDescription('❌ Gagal mengirim pesan ke user (DM tertutup).')] });
         }
         return; 
     }
 
     // ==========================================
-    // ⚙️ DEKLARASI PENGATURAN DATABASE (TUNGGAL)
+    // ⚙️ DEKLARASI PENGATURAN DATABASE (TUNGGAL ANTI CRASH)
     // ==========================================
-    let settings;
+    let settings = null;
     if (message.guild) {
-        [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } });
+        try { [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } }); } catch(e){}
     }
 
     // ==========================================
     // 🛡️ FITUR 3: ADVANCED AUTOMOD
     // ==========================================
-    if (message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+    if (settings && message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         const automod = settings?.settings?.automod || {};
         let isViolation = false;
         let violationType = '';
         const content = message.content.toLowerCase();
 
-        // 1. Kata Kasar
         if (badWords.some(word => content.includes(word))) {
             isViolation = true; violationType = 'Menggunakan Kata Kasar';
-        } 
-        // 2. Anti-Invite
-        else if (automod.antiInvite && /(discord\.gg|discord\.com\/invite)/gi.test(content)) {
+        } else if (automod.antiInvite && /(discord\.gg|discord\.com\/invite)/gi.test(content)) {
             isViolation = true; violationType = 'Mengirim Undangan Server';
-        }
-        // 3. Anti-Link (Pengecualian CDN Discord)
-        else if (linkRegex.test(content) && !content.includes('tenor.com') && !content.includes('discordapp.') && !content.includes('discord.com')) {
+        } else if (linkRegex.test(content) && !content.includes('tenor.com') && !content.includes('discordapp.') && !content.includes('discord.com')) {
             isViolation = true; violationType = 'Mengirim Link Ilegal';
-        }
-        // 4. Anti-Caps (Hanya jika panjang > 10 dan 70% kapital)
-        else if (automod.antiCaps && message.content.length > 10) {
+        } else if (automod.antiCaps && message.content.length > 10) {
             const capsCount = message.content.replace(/[^A-Z]/g, "").length;
             if (capsCount / message.content.length > 0.7) { 
                 isViolation = true; violationType = 'Terlalu banyak HURUF KAPITAL'; 
             }
-        }
-        // 5. Mass Mention
-        else if (message.mentions.users.size > (automod.massMention || 5)) {
+        } else if (message.mentions.users.size > (automod.massMention || 5)) {
             isViolation = true; violationType = 'Mass Mention (Spam Tag)';
         }
 
@@ -158,10 +152,9 @@ module.exports = async (client, message) => {
     // ==========================================
     // 💤 FITUR 4: AFK SYSTEM
     // ==========================================
-    // Cek jika member yang dimention sedang AFK
     if (message.mentions.users.size > 0) {
         const mentioned = message.mentions.users.first();
-        const profile = await UserProfile.findByPk(mentioned.id);
+        const profile = await UserProfile.findByPk(mentioned.id).catch(()=>null);
         if (profile && profile.afk_reason) {
             const timeAgo = `<t:${Math.floor(new Date(profile.afk_timestamp).getTime() / 1000)}:R>`;
             message.reply({ content: `💤 **${mentioned.username}** sedang AFK: *${profile.afk_reason}* (${timeAgo})` })
@@ -169,74 +162,17 @@ module.exports = async (client, message) => {
         }
     }
 
-    // Hapus AFK pengirim pesan jika mereka sedang AFK
-    const userProfile = await UserProfile.findByPk(message.author.id);
+    const userProfile = await UserProfile.findByPk(message.author.id).catch(()=>null);
     if (userProfile && userProfile.afk_reason) {
         userProfile.afk_reason = null;
         userProfile.afk_timestamp = null;
-        await userProfile.save();
+        await userProfile.save().catch(()=>{});
         message.reply({ content: `👋 Selamat datang kembali <@${message.author.id}>! Naura sudah menghapus status AFK-mu.` })
             .then(m => setTimeout(() => m.delete().catch(()=>null), 5000));
     }
 
     // ==========================================
-    // 🔢 FITUR 5: GAME BERHITUNG & TRUTH OR DARE
-    // ==========================================
-    if (message.guild && settings?.channels?.counting === message.channel.id) {
-        const inputMessage = message.content.trim();
-        if (/^\d+$/.test(inputMessage)) {
-            const inputNumber = parseInt(inputMessage);
-            const countingData = settings.countingGame || { currentNumber: 0, lastUser: null };
-            const expectedNumber = (countingData.currentNumber || 0) + 1;
-
-            if (inputNumber !== expectedNumber || countingData.lastUser === message.author.id) {
-                const reason = inputNumber !== expectedNumber ? `**${inputMessage}** itu salah!` : `Dilarang menghitung dua kali berturut-turut!`;
-                settings.countingGame = { currentNumber: 0, lastUser: null };
-                settings.changed('countingGame', true); 
-                await settings.save();
-                
-                message.react(inputNumber !== expectedNumber ? '💥' : '⚠️').catch(() => {});
-                return message.reply(`${reason} Hitungan di-reset ke **0**. Ayo mulai lagi dari angka **1**!`);
-            }
-
-            settings.countingGame = { currentNumber: expectedNumber, lastUser: message.author.id };
-            settings.changed('countingGame', true);
-            await settings.save();
-
-            message.react(expectedNumber % 10 === 0 ? '🌟' : ui.getEmoji('success')).catch(() => {});
-            try { await awardXp(message.author, 5, null); } catch(e){}
-            return; 
-        }
-    }
-
-    if (message.guild && settings?.channels?.tod === message.channel.id) {
-        const input = message.content.trim().toLowerCase();
-        if (input === 'truth' || input === 'dare') {
-            await message.channel.sendTyping();
-            const isTruth = input === 'truth';
-            let qData;
-
-            try {
-                const promptAI = `Buatkan 1 pertanyaan 'Truth' atau tantangan 'Dare' gaul. Tipe: ${input.toUpperCase()}. JSON: {"type": "${input}", "q": "Teks"}`;
-                const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: promptAI });
-                qData = JSON.parse(response.text.replace(/```json/gi, '').replace(/```/gi, '').trim());
-            } catch (error) {
-                qData = isTruth ? { q: 'Apa rahasia terbesarmu?' } : { q: 'Chat mantan sekarang juga!' };
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor(isTruth ? ui.getColor('primary') : ui.getColor('error'))
-                .setAuthor({ name: `Truth or Dare`, iconURL: client.user.displayAvatarURL() })
-                .setTitle(isTruth ? `${ui.getEmoji('tod_truth')} TRUTH untuk ${message.author.username}` : `${ui.getEmoji('tod_dare')} DARE untuk ${message.author.username}`)
-                .setDescription(`\`\`\`${qData.q}\`\`\``);
-
-            await message.reply({ embeds: [embed] });
-            return; 
-        }
-    }
-
-    // ==========================================
-    // 🤖 FITUR 6: CHATBOT AI (MENTION & REPLY)
+    // 🤖 FITUR 6: CHATBOT AI & LAINNYA
     // ==========================================
     const isMentioned = message.mentions.has(client.user);
     let isReplyToBot = false;
@@ -271,17 +207,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🌟 FITUR 7: SISTEM LEVELING & XP
-    // ==========================================
-    if (message.guild) {
-        try {
-            const xpMendapat = Math.floor(Math.random() * 11) + 15;
-            await awardXp(message.author, xpMendapat, message.channel);
-        } catch (err) {}
-    }
-
-    // ==========================================
-    // ⚡ FITUR 8: HYBRID PREFIX HANDLER
+    // ⚡ FITUR 8: HYBRID PREFIX HANDLER (ANTI BUG)
     // ==========================================
     const prefix = env.PREFIX || 'n!';
     if (!message.content.startsWith(prefix)) return;
@@ -306,7 +232,16 @@ module.exports = async (client, message) => {
             channel: message.channel,
             client: client,
             options: {
-                getString: (name) => args.join(' ') || null,
+                // FUNGSI INI WAJIB UNTUK COMMAND ECONOMY
+                getSubcommand: () => args[0]?.toLowerCase() || null, 
+                getString: (name) => {
+                    let tempArgs = [...args];
+                    // Buang argumen pertama jika itu adalah subcommand (misal: "shop" dari "n!economy shop market")
+                    if (tempArgs.length > 0 && ['balance', 'inventory', 'shop', 'buy', 'daily', 'weekly', 'work', 'lootbox', 'race', 'hack', 'steal'].includes(tempArgs[0].toLowerCase())) {
+                        tempArgs.shift(); 
+                    }
+                    return tempArgs.join(' ') || null;
+                },
                 getUser: (name) => message.mentions.users.first() || null,
                 getMember: (name) => message.mentions.members.first() || null,
                 getInteger: (name) => parseInt(args.find(arg => !isNaN(parseInt(arg)))) || null,
@@ -341,6 +276,6 @@ module.exports = async (client, message) => {
 
     } catch (error) {
         console.error(`Hybrid Command Error (${commandName}):`, error);
-        message.reply({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setDescription('❌ Terjadi kesalahan saat memproses command ini.')] });
+        message.reply({ embeds: [new EmbedBuilder().setColor('#FF0000').setDescription('❌ Terjadi kesalahan saat memproses command ini.')] });
     }
 };
