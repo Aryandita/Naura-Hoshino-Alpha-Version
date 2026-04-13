@@ -1,4 +1,4 @@
-const { REST, Routes } = require('discord.js');
+const { REST, Routes, Collection } = require('discord.js');
 const fs = require('fs/promises');
 const path = require('path');
 const env = require('../config/env');
@@ -7,6 +7,8 @@ class CommandHandler {
   constructor(client, commandsPath) {
     this.client = client;
     this.commandsPath = commandsPath;
+    // Memastikan client.commands adalah Collection
+    if (!client.commands) client.commands = new Collection();
     this.commands = client.commands;
   }
 
@@ -34,7 +36,7 @@ class CommandHandler {
               const cmdName = command.data.name;
 
               if (commandNames.has(cmdName)) {
-                console.log(`\x1b[33m[⚠️ WARNING]\x1b[0m Ada duplikat command bernama "/\x1b[31m${cmdName}\x1b[33m" pada file \x1b[36m${file}\x1b[0m! File ini dilewati.`);
+                console.log(`\x1b[33m[⚠️ WARNING]\x1b[0m Duplikat command "/\x1b[31m${cmdName}\x1b[33m" pada file \x1b[36m${file}\x1b[0m! File dilewati.`);
                 continue; 
               }
 
@@ -42,7 +44,7 @@ class CommandHandler {
               command.category = folder;
               this.commands.set(cmdName, command);
               
-              // Tambahan: Mendukung alias jika Anda ingin prefix command punya nama alternatif
+              // Mendaftarkan alias agar bisa dipanggil via prefix handler
               if (command.aliases && Array.isArray(command.aliases)) {
                   command.aliases.forEach(alias => this.commands.set(alias, command));
               }
@@ -53,20 +55,20 @@ class CommandHandler {
         }
       }
 
-      console.log(`\x1b[34m[📂 COMMANDS]\x1b[0m Memuat \x1b[33m${commandsArray.length}\x1b[0m slash command tanpa duplikat.`);
+      console.log(`\x1b[34m[📂 COMMANDS]\x1b[0m Memuat \x1b[33m${commandsArray.length}\x1b[0m slash command.`);
 
       const rest = new REST({ version: '10' }).setToken(env.TOKEN);
       const clientId = env.CLIENT_ID;
-      const guildId = env.GUILD_ID; // Pastikan ini ada di env.js jika ingin test di 1 server
+      const guildId = env.GUILD_ID; 
 
       if (!clientId) return console.log('\x1b[31m[❌ COMMANDS]\x1b[0m CLIENT_ID tidak ada di .env!');
 
       if (guildId) {
         await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commandsArray });
-        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses! Command didaftarkan ke server (Guild: \x1b[33m${guildId}\x1b[0m).`);
+        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses didaftarkan ke server (\x1b[33m${guildId}\x1b[0m).`);
       } else {
         await rest.put(Routes.applicationCommands(clientId), { body: commandsArray });
-        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses! Command didaftarkan secara Global.`);
+        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses didaftarkan secara Global.`);
       }
     } catch (error) {
       console.error('\x1b[31m[❌ COMMANDS]\x1b[0m Error memuat command:', error);
