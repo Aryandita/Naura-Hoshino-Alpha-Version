@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const UserProfile = require('../models/UserProfile');
-const { CanvasUtils } = require('./Canvas'); // Panggil Canvas di sini
+const { CanvasUtils } = require('./Canvas');
 
 const BASE_XP = 100;
 const XP_MULTIPLIER = 1.5;
@@ -10,39 +10,29 @@ function getXpForLevel(level) {
     return Math.floor(BASE_XP * Math.pow(XP_MULTIPLIER, level - 1));
 }
 
-// Ubah parameter dari userId menjadi objek 'user' utuh
 async function awardXp(user, xpToAward, channel) {
     const userId = user.id;
-    let userProfile = await UserProfile.findOneAndUpdate(
-        { userId: userId },
-        { $setOnInsert: { userId: userId } },
-        { upsert: true, new: true }
-    );
-
-    // ==========================================
-    // 🟢 KODE PENGAMAN: Buat laci leveling jika belum ada
-    // ==========================================
-    if (!userProfile.leveling) {
-        userProfile.leveling = { xp: 0, level: 1 };
-    }
-
-    // Sekarang aman untuk menambahkan XP
-    userProfile.leveling.xp += xpToAward;
     
-    let xpForNextLevel = getXpForLevel(userProfile.leveling.level);
+    // PERBAIKAN: Menggunakan fungsi Sequelize findOrCreate
+    let [userProfile] = await UserProfile.findOrCreate({ where: { userId: userId } });
+
+    // PERBAIKAN: Sesuaikan dengan nama kolom di database MySQL (tidak nested)
+    userProfile.leveling_xp += xpToAward;
+    
+    let xpForNextLevel = getXpForLevel(userProfile.leveling_level);
     let leveledUp = false;
 
-    while (userProfile.leveling.xp >= xpForNextLevel) {
-        userProfile.leveling.level++;
-        userProfile.leveling.xp -= xpForNextLevel;
-        xpForNextLevel = getXpForLevel(userProfile.leveling.level);
+    while (userProfile.leveling_xp >= xpForNextLevel) {
+        userProfile.leveling_level++;
+        userProfile.leveling_xp -= xpForNextLevel;
+        xpForNextLevel = getXpForLevel(userProfile.leveling_level);
         leveledUp = true;
     }
 
     if (leveledUp && channel) {
         try {
             // Generate gambar dari Canvas
-            const levelCanvas = await CanvasUtils.generateLevel(user, userProfile.leveling.level);
+            const levelCanvas = await CanvasUtils.generateLevel(user, userProfile.leveling_level);
             
             // ==========================================
             // ✨ PENGUMUMAN LEVEL UP MEWAH (EMBED)
@@ -53,7 +43,7 @@ async function awardXp(user, xpToAward, channel) {
                 .setTitle(`Pencapaian Baru Diraih!`)
                 .setDescription(`Luar biasa, **${user.username}**!\nDedikasimu membuahkan hasil. Kamu telah berevolusi dan mencapai tingkat yang lebih tinggi di server ini.`)
                 .addFields(
-                    { name: '🌟 Tingkat Kekuatan', value: `\`Level ${userProfile.leveling.level}\``, inline: true },
+                    { name: '🌟 Tingkat Kekuatan', value: `\`Level ${userProfile.leveling_level}\``, inline: true },
                     { name: '✨ Status Peringkat', value: `\`Meningkat\``, inline: true }
                 )
                 // Memasang gambar canvas ke dalam embed agar lebih rapi
@@ -72,7 +62,7 @@ async function awardXp(user, xpToAward, channel) {
             const fallbackEmbed = new EmbedBuilder()
                 .setColor('#FFD700')
                 .setAuthor({ name: '✦ 𝐋𝐄𝐕𝐄𝐋 𝐔𝐏 ✦', iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`Selamat <@${userId}>! Evolusimu berhasil, kamu kini berada di **Level ${userProfile.leveling.level}**! ✨`);
+                .setDescription(`Selamat <@${userId}>! Evolusimu berhasil, kamu kini berada di **Level ${userProfile.leveling_level}**! ✨`);
             channel.send({ embeds: [fallbackEmbed] });
         }
     }
