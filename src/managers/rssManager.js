@@ -9,7 +9,6 @@ class RssManager {
     }
 
     init() {
-        // FORMAT BARU: Log RSS (Kuning)
         console.log('\x1b[43m\x1b[30m 📡 RSS ALERT \x1b[0m \x1b[33mMesin Notifikasi Sosial Media diaktifkan.\x1b[0m');
         
         this.checkAllFeeds();
@@ -18,8 +17,9 @@ class RssManager {
 
     async checkAllFeeds() {
         try {
-            const alerts = await SocialAlert.findAll();
-            if (alerts.length === 0) return;
+            // PERBAIKAN: Jika DB mati, kembalikan array kosong agar tidak crash
+            const alerts = await SocialAlert.findAll().catch(() => []);
+            if (!alerts || alerts.length === 0) return;
 
             for (const alert of alerts) {
                 try {
@@ -30,7 +30,7 @@ class RssManager {
 
                     if (alert.lastPostLink !== latestPost.link) {
                         alert.lastPostLink = latestPost.link;
-                        await alert.save();
+                        await alert.save().catch(() => {}); // Penahan error save
 
                         const channel = this.client.channels.cache.get(alert.discordChannelId);
                         if (!channel) continue;
@@ -46,7 +46,7 @@ class RssManager {
                 } catch (feedError) {}
             }
         } catch (error) {
-            logError('RSS Manager Fatal Error', error);
+            console.error('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mRSS Manager gagal mengakses Database.\x1b[0m');
         }
     }
 }
