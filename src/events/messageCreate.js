@@ -1,9 +1,10 @@
-const { ChannelType, EmbedBuilder, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
+const { ChannelType, EmbedBuilder, AttachmentBuilder, PermissionFlagsBits, Collection } = require('discord.js');
 const { GoogleGenAI } = require('@google/genai');
 const env = require('../config/env');
 const ui = require('../config/ui');
 const { awardXp } = require('../utils/leveling');
 
+const UserProfile = require('../models/UserProfile');
 const GuildSettings = require('../models/GuildSettings');
 const ModMail = require('../models/ModMail');
 
@@ -12,10 +13,14 @@ const badWords = ['anjing', 'bangsat', 'kontol', 'babi'];
 const linkRegex = /(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/gi;
 
 module.exports = async (client, message) => {
+    // Abaikan pesan dari bot
     if (message.author.bot) return;
 
+    // Pastikan Snipe Collection tersedia (Fitur Meekly)
+    if (!client.snipes) client.snipes = new Collection();
+
     // ==========================================
-    // 📩 FITUR MODMAIL (DM KE BOT)
+    // 📩 FITUR 1: MODMAIL (DM KE BOT)
     // ==========================================
     if (message.channel.type === ChannelType.DM) {
         const staffGuild = client.guilds.cache.get(env.STAFF_GUILD);
@@ -35,7 +40,7 @@ module.exports = async (client, message) => {
                 thread = await ModMail.create({ userId: message.author.id, channelId: channel.id });
                 
                 const newTicketEmbed = new EmbedBuilder()
-                    .setColor('#00FFFF')
+                    .setColor(ui.getColor('primary'))
                     .setTitle('🆕 Tiket ModMail Baru')
                     .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Akun Dibuat:** <t:${Math.floor(message.author.createdTimestamp / 1000)}:R>`)
                     .setFooter({ text: 'Ketik pesan di sini untuk membalas. Ketik n!close untuk menutup.' });
@@ -49,7 +54,7 @@ module.exports = async (client, message) => {
 
         const staffChannel = client.channels.cache.get(thread.channelId);
         if (staffChannel) {
-            const embedColor = env.OWNER_IDS.includes(message.author.id) ? '#00FFFF' : '#3498DB';
+            const embedColor = env.OWNER_IDS.includes(message.author.id) ? ui.getColor('primary') : '#3498DB';
             const embed = new EmbedBuilder()
                 .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
                 .setDescription(message.content || '*Pesan hanya berisi lampiran*')
@@ -59,66 +64,50 @@ module.exports = async (client, message) => {
             let files = [];
             if (message.attachments.size > 0) files = message.attachments.map(a => new AttachmentBuilder(a.url, { name: a.name }));
             await staffChannel.send({ embeds: [embed], files: files });
-            await message.react('✅');
+            await message.react(ui.getEmoji('success'));
         }
         return; 
     }
 
-    
     // ==========================================
-    // 🛡️ FITUR ADVANCED AUTOMOD
+    // 📤 FITUR 2: MODMAIL (STAFF MEMBALAS KE DM)
     // ==========================================
-    let [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } });
-    const automod = settings.settings?.automod || {};
-
-    if (message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-        let isViolation = false;
-        let reason = '';
-
-        // 1. Anti-Invite
-        if (automod.antiInvite && /(discord\.gg|discord\.com\/invite)/gi.test(message.content)) {
-            isViolation = true; reason = 'Mengirim Undangan Server';
-        }
-        // 2. Anti-Caps (Min 10 char, > 70% Caps)
-        else if (automod.antiCaps && message.content.length > 10) {
-            const capsCount = message.content.replace(/[^A-Z]/g, "").length;
-            if (capsCount / message.content.length > 0.7) { isViolation = true; reason = 'Terlalu banyak HURUF KAPITAL'; }
-        }
-        // 3. Mass Mention
-        else if (message.mentions.users.size > (automod.massMention || 5)) {
-            isViolation = true; reason = 'Mass Mention (Spam Tag)';
+    const thread = await ModMail.findOne({ where: { channelId: message.channel.id, closed: false } });
+    if (thread) {
+        if (message.content.toLowerCase() === 'n!close') {
+            thread.closed = true;
+            await thread.save();
+            try {
+                const user = await client.users.fetch(thread.userId);
+                await user.send({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setTitle('🔒 Tiket Ditutup').setDescription('Sesi ModMail ini telah diselesaikan oleh Staff.')] });
+            } catch (e) {}
+            await message.channel.send('Merapikan channel dalam 5 detik...');
+            setTimeout(() => message.channel.delete().catch(() => {}), 5000);
+            return;
         }
 
-        if (isViolation) {
-            await message.delete().catch(() => {});
-            return message.channel.send(`⚠️ <@${message.author.id}>, pesan dihapus: **${reason}**`).then(m => setTimeout(() => m.delete(), 5000));
+        try {
+            const user = await client.users.fetch(thread.userId);
+            const replyEmbed = new EmbedBuilder()
+                .setAuthor({ name: 'Balasan dari Tim Support', iconURL: client.user.displayAvatarURL() })
+                .setDescription(message.content || '*Pesan hanya berisi lampiran*')
+                .setColor(ui.getColor('primary'))
+                .setFooter({ text: `Staff: ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
+                .setTimestamp();
+
+            let files = [];
+            if (message.attachments.size > 0) files = message.attachments.map(a => new AttachmentBuilder(a.url, { name: a.name }));
+
+            await user.send({ embeds: [replyEmbed], files: files });
+            await message.react('📨');
+        } catch (error) {
+            await message.channel.send({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setDescription('❌ Gagal mengirim pesan ke user (DM tertutup).')] });
         }
+        return; 
     }
 
     // ==========================================
-    // 💤 FITUR 3: AFK SYSTEM (PORTED FROM MEEKLY)
-    // ==========================================
-    // 1. Cek jika user yang di-tag sedang AFK
-    if (message.mentions.users.size > 0) {
-        const mentioned = message.mentions.users.first();
-        const profile = await UserProfile.findByPk(mentioned.id);
-        if (profile?.afk_reason) {
-            const timeAgo = `<t:${Math.floor(profile.afk_timestamp / 1000)}:R>`;
-            message.reply({ content: `💤 **${mentioned.username}** sedang AFK: *${profile.afk_reason}* (${timeAgo})` });
-        }
-    }
-
-    // 2. Hapus status AFK jika user mengirim pesan
-    const userProfile = await UserProfile.findByPk(message.author.id);
-    if (userProfile?.afk_reason) {
-        userProfile.afk_reason = null;
-        userProfile.afk_timestamp = null;
-        await userProfile.save();
-        message.reply({ content: `👋 Selamat datang kembali <@${message.author.id}>! Naura sudah menghapus status AFK-mu.` }).then(m => setTimeout(() => m.delete(), 5000));
-    }
-
-    // ==========================================
-    // ⚙️ AMBIL PENGATURAN SERVER DARI MYSQL
+    // ⚙️ DEKLARASI PENGATURAN DATABASE (TUNGGAL)
     // ==========================================
     let settings;
     if (message.guild) {
@@ -126,7 +115,72 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🔢 FITUR GAME BERHITUNG & TRUTH OR DARE
+    // 🛡️ FITUR 3: ADVANCED AUTOMOD
+    // ==========================================
+    if (message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        const automod = settings?.settings?.automod || {};
+        let isViolation = false;
+        let violationType = '';
+        const content = message.content.toLowerCase();
+
+        // 1. Kata Kasar
+        if (badWords.some(word => content.includes(word))) {
+            isViolation = true; violationType = 'Menggunakan Kata Kasar';
+        } 
+        // 2. Anti-Invite
+        else if (automod.antiInvite && /(discord\.gg|discord\.com\/invite)/gi.test(content)) {
+            isViolation = true; violationType = 'Mengirim Undangan Server';
+        }
+        // 3. Anti-Link (Pengecualian CDN Discord)
+        else if (linkRegex.test(content) && !content.includes('tenor.com') && !content.includes('discordapp.') && !content.includes('discord.com')) {
+            isViolation = true; violationType = 'Mengirim Link Ilegal';
+        }
+        // 4. Anti-Caps (Hanya jika panjang > 10 dan 70% kapital)
+        else if (automod.antiCaps && message.content.length > 10) {
+            const capsCount = message.content.replace(/[^A-Z]/g, "").length;
+            if (capsCount / message.content.length > 0.7) { 
+                isViolation = true; violationType = 'Terlalu banyak HURUF KAPITAL'; 
+            }
+        }
+        // 5. Mass Mention
+        else if (message.mentions.users.size > (automod.massMention || 5)) {
+            isViolation = true; violationType = 'Mass Mention (Spam Tag)';
+        }
+
+        if (isViolation) {
+            await message.delete().catch(() => {});
+            const warningMsg = await message.channel.send(`⚠️ <@${message.author.id}>, pesan Anda dihapus karena: **${violationType}**.`);
+            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+            return; 
+        }
+    }
+
+    // ==========================================
+    // 💤 FITUR 4: AFK SYSTEM
+    // ==========================================
+    // Cek jika member yang dimention sedang AFK
+    if (message.mentions.users.size > 0) {
+        const mentioned = message.mentions.users.first();
+        const profile = await UserProfile.findByPk(mentioned.id);
+        if (profile && profile.afk_reason) {
+            const timeAgo = `<t:${Math.floor(new Date(profile.afk_timestamp).getTime() / 1000)}:R>`;
+            message.reply({ content: `💤 **${mentioned.username}** sedang AFK: *${profile.afk_reason}* (${timeAgo})` })
+                .then(m => setTimeout(() => m.delete().catch(()=>null), 5000));
+        }
+    }
+
+    // Hapus AFK pengirim pesan jika mereka sedang AFK
+    const userProfile = await UserProfile.findByPk(message.author.id);
+    if (userProfile && userProfile.afk_reason) {
+        userProfile.afk_reason = null;
+        userProfile.afk_timestamp = null;
+        await userProfile.save();
+        message.reply({ content: `👋 Selamat datang kembali <@${message.author.id}>! Naura sudah menghapus status AFK-mu.` })
+            .then(m => setTimeout(() => m.delete().catch(()=>null), 5000));
+    }
+
+    // ==========================================
+    // 🔢 FITUR 5: GAME BERHITUNG & TRUTH OR DARE
     // ==========================================
     if (message.guild && settings?.channels?.counting === message.channel.id) {
         const inputMessage = message.content.trim();
@@ -149,14 +203,40 @@ module.exports = async (client, message) => {
             settings.changed('countingGame', true);
             await settings.save();
 
-            message.react(expectedNumber % 10 === 0 ? '🌟' : '✅').catch(() => {});
+            message.react(expectedNumber % 10 === 0 ? '🌟' : ui.getEmoji('success')).catch(() => {});
             try { await awardXp(message.author, 5, null); } catch(e){}
             return; 
         }
     }
 
+    if (message.guild && settings?.channels?.tod === message.channel.id) {
+        const input = message.content.trim().toLowerCase();
+        if (input === 'truth' || input === 'dare') {
+            await message.channel.sendTyping();
+            const isTruth = input === 'truth';
+            let qData;
+
+            try {
+                const promptAI = `Buatkan 1 pertanyaan 'Truth' atau tantangan 'Dare' gaul. Tipe: ${input.toUpperCase()}. JSON: {"type": "${input}", "q": "Teks"}`;
+                const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: promptAI });
+                qData = JSON.parse(response.text.replace(/```json/gi, '').replace(/```/gi, '').trim());
+            } catch (error) {
+                qData = isTruth ? { q: 'Apa rahasia terbesarmu?' } : { q: 'Chat mantan sekarang juga!' };
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(isTruth ? ui.getColor('primary') : ui.getColor('error'))
+                .setAuthor({ name: `Truth or Dare`, iconURL: client.user.displayAvatarURL() })
+                .setTitle(isTruth ? `${ui.getEmoji('tod_truth')} TRUTH untuk ${message.author.username}` : `${ui.getEmoji('tod_dare')} DARE untuk ${message.author.username}`)
+                .setDescription(`\`\`\`${qData.q}\`\`\``);
+
+            await message.reply({ embeds: [embed] });
+            return; 
+        }
+    }
+
     // ==========================================
-    // 🤖 FITUR CHATBOT AI (MENTION & REPLY)
+    // 🤖 FITUR 6: CHATBOT AI (MENTION & REPLY)
     // ==========================================
     const isMentioned = message.mentions.has(client.user);
     let isReplyToBot = false;
@@ -191,7 +271,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🌟 FITUR SISTEM LEVELING & XP
+    // 🌟 FITUR 7: SISTEM LEVELING & XP
     // ==========================================
     if (message.guild) {
         try {
@@ -201,13 +281,13 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // ⚡ FITUR HYBRID PREFIX HANDLER
+    // ⚡ FITUR 8: HYBRID PREFIX HANDLER
     // ==========================================
-    const prefix = env.PREFIX;
+    const prefix = env.PREFIX || 'n!';
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift()?.toLowerCase(); // Tambahan opsional chaining
+    const commandName = args.shift()?.toLowerCase();
     
     if (!commandName) return;
 
@@ -229,13 +309,11 @@ module.exports = async (client, message) => {
                 getString: (name) => args.join(' ') || null,
                 getUser: (name) => message.mentions.users.first() || null,
                 getMember: (name) => message.mentions.members.first() || null,
-                // Mengambil angka pertama yang terdeteksi di argument untuk mencegah error parseInt
                 getInteger: (name) => parseInt(args.find(arg => !isNaN(parseInt(arg)))) || null,
                 getChannel: (name) => message.mentions.channels.first() || null,
                 getRole: (name) => message.mentions.roles.first() || null,
             },
             reply: async (payload) => {
-                // Bug fix: Filter payload agar tidak error saat format ephemeral diaktifkan
                 let msgPayload = typeof payload === 'string' ? { content: payload } : { ...payload };
                 delete msgPayload.ephemeral; 
                 delete msgPayload.fetchReply;
@@ -263,6 +341,6 @@ module.exports = async (client, message) => {
 
     } catch (error) {
         console.error(`Hybrid Command Error (${commandName}):`, error);
-        message.reply({ embeds: [new EmbedBuilder().setColor('#00FFFF').setDescription('❌ Terjadi kesalahan saat memproses command ini.')] });
+        message.reply({ embeds: [new EmbedBuilder().setColor(ui.getColor('error')).setDescription('❌ Terjadi kesalahan saat memproses command ini.')] });
     }
 };
