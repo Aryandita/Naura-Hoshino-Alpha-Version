@@ -201,13 +201,14 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
         const user = interaction.options.getUser('target') || interaction.user;
 
-        // Inisialisasi Profil
-        let profile = await UserProfile.findOne({ userId: user.id });
-        if (!profile) profile = new UserProfile({ userId: user.id });
+        // PERBAIKAN 1: Inisialisasi Profil Menggunakan Metode Sequelize
+        let [profile] = await UserProfile.findOrCreate({ where: { userId: user.id } });
         
-        if (!profile.economy) profile.economy = { wallet: 0, bank: 0 };
+        // Memastikan default kolom array/JSON tidak null
         if (!profile.inventory) profile.inventory = [];
         if (!profile.cooldowns) profile.cooldowns = {};
+        if (profile.economy_wallet == null) profile.economy_wallet = 0;
+        if (profile.economy_bank == null) profile.economy_bank = 0;
 
         const coin = ui.emojis?.coin || '🪙';
         const errorEmoji = ui.emojis?.error || '❌';
@@ -229,7 +230,8 @@ module.exports = {
 
         const setCD = (commandName) => {
             profile.cooldowns[commandName] = Date.now();
-            profile.markModified('cooldowns');
+            // PERBAIKAN 2: Menggunakan changed() karena markModified hanya ada di Mongoose
+            profile.changed('cooldowns', true); 
         };
 
         // ==========================================
@@ -248,7 +250,7 @@ module.exports = {
                 .setColor(color)
                 .setAuthor({ name: title, iconURL: interaction.client.user.displayAvatarURL() })
                 .setDescription(`> Stok toko diacak ulang **setiap 5 menit!**\n⏳ **Refresh berikutnya:** <t:${Math.floor(rotation.nextRefresh / 1000)}:R>\n🛒 **Cara Beli:** \`/economy buy kode_barang\`\n\n**━━━ DAFTAR BARANG ━━━**`)
-                .setFooter({ text: `💰 Saldo: ${profile.economy.wallet.toLocaleString()} koin` });
+                .setFooter({ text: `💰 Saldo: ${profile.economy_wallet.toLocaleString()} koin` });
 
             rotation.items.forEach(item => {
                 embed.addFields({
@@ -272,13 +274,14 @@ module.exports = {
             });
 
             if (!foundItem) return sendError(`Barang \`${itemID}\` tidak ditemukan di sesi toko saat ini! Cek \`/economy shop\`.`);
-            if (profile.economy.wallet < foundItem.price) return sendError(`Uangmu kurang! Butuh **${foundItem.price.toLocaleString()}** ${coin}.`);
+            
+            // PERBAIKAN 3: Menyesuaikan pemanggilan database ke economy_wallet
+            if (profile.economy_wallet < foundItem.price) return sendError(`Uangmu kurang! Butuh **${foundItem.price.toLocaleString()}** ${coin}.`);
             if (profile.inventory.includes(foundItem.id)) return sendError(`Kamu sudah punya **${foundItem.name}**!`);
 
-            profile.economy.wallet -= foundItem.price;
+            profile.economy_wallet -= foundItem.price;
             profile.inventory.push(foundItem.id);
-            profile.markModified('economy');
-            profile.markModified('inventory');
+            profile.changed('inventory', true); // Memberi tahu MySQL ada data array yang baru
             await profile.save();
 
             const embed = new EmbedBuilder()
@@ -301,8 +304,8 @@ module.exports = {
                 .setColor('#FFD700')
                 .setAuthor({ name: `Buku Tabungan: ${user.username}`, iconURL: user.displayAvatarURL() })
                 .addFields(
-                    { name: '👛 Dompet (Wallet)', value: `**${profile.economy.wallet.toLocaleString()}** ${coin}`, inline: true },
-                    { name: '🏦 Bank', value: `**${profile.economy.bank.toLocaleString()}** ${coin}`, inline: true },
+                    { name: '👛 Dompet (Wallet)', value: `**${profile.economy_wallet.toLocaleString()}** ${coin}`, inline: true },
+                    { name: '🏦 Bank', value: `**${profile.economy_bank.toLocaleString()}** ${coin}`, inline: true },
                     { name: '📦 Total Item', value: `**${profile.inventory.length}** Barang (Cek /economy inventory)`, inline: false }
                 );
 
@@ -345,11 +348,11 @@ module.exports = {
 
             const hasMahkota = profile.inventory.includes('mahkota_raja');
             const reward = 1500 + (hasMahkota ? 750 : 0);
-            profile.economy.wallet += reward; 
+            profile.economy_wallet += reward; 
             setCD('daily'); await profile.save();
             
             const itemStr = hasMahkota ? `\n> 👑 **Item Aktif:** Mahkota Raja Arthur (+750)` : '';
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#00FF00').setDescription(`🎁 Kamu mendapatkan **+${reward.toLocaleString()}** ${coin} dari bonus harian!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}`)] });
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#00FF00').setDescription(`🎁 Kamu mendapatkan **+${reward.toLocaleString()}** ${coin} dari bonus harian!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}`)] });
         }
 
         if (subcommand === 'weekly') {
@@ -357,10 +360,10 @@ module.exports = {
             if (cd.onCooldown) return sendError(`Bansos mingguan belum turun. Tunggu **${msToTime(cd.timeLeft)}** lagi.`);
 
             const reward = 10000;
-            profile.economy.wallet += reward; 
+            profile.economy_wallet += reward; 
             setCD('weekly'); await profile.save();
             
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#f1c40f').setDescription(`🎉 Kamu mendapatkan **+${reward.toLocaleString()}** ${coin} dari gaji mingguan!\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}`)] });
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#f1c40f').setDescription(`🎉 Kamu mendapatkan **+${reward.toLocaleString()}** ${coin} dari gaji mingguan!\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}`)] });
         }
 
         if (subcommand === 'work') {
@@ -373,13 +376,13 @@ module.exports = {
             const pekerjaan = ['Barista Kafe', 'Programmer', 'Kurir Paket', 'Kasir Alfamart', 'Desainer Grafis'];
             const kerjaRandom = pekerjaan[Math.floor(Math.random() * pekerjaan.length)];
             
-            profile.economy.wallet += gaji; 
+            profile.economy_wallet += gaji; 
             setCD('work'); await profile.save();
             
             const workItems = profile.inventory.filter(id => ['kopi_biasa', 'kopi_sultan', 'mahkota_raja'].includes(id)).map(getItemName);
             const itemStr = workItems.length > 0 ? `\n> 🛠️ **Item Aktif:** ${workItems.join(', ')} (+${buffs.workBonus}%)` : '';
 
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#3498db').setDescription(`💼 Selesai bekerja sebagai **${kerjaRandom}**. Dibayar **+${gaji.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#3498db').setDescription(`💼 Selesai bekerja sebagai **${kerjaRandom}**. Dibayar **+${gaji.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
         }
 
         if (subcommand === 'lootbox') {
@@ -387,10 +390,10 @@ module.exports = {
             if (cd.onCooldown) return sendError(`Lootbox sedang di-*restock*. Tunggu **${msToTime(cd.timeLeft)}** lagi.`);
 
             const reward = Math.floor(Math.random() * 3000) + 1000; 
-            profile.economy.wallet += reward; 
+            profile.economy_wallet += reward; 
             setCD('lootbox'); await profile.save();
             
-            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e67e22').setDescription(`📦 Kamu membuka kotak dan menemukan **+${reward.toLocaleString()}** ${coin}!\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+            return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e67e22').setDescription(`📦 Kamu membuka kotak dan menemukan **+${reward.toLocaleString()}** ${coin}!\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
         }
 
         if (subcommand === 'race') {
@@ -406,11 +409,11 @@ module.exports = {
 
             if (roll <= winChance) {
                 const reward = Math.floor(Math.random() * 5000) + 3000;
-                profile.economy.wallet += reward; await profile.save();
-                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2ecc71').setDescription(`🏁 **JUARA 1!** Balapan sengit, kamu bawa pulang **+${reward.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+                profile.economy_wallet += reward; await profile.save();
+                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2ecc71').setDescription(`🏁 **JUARA 1!** Balapan sengit, kamu bawa pulang **+${reward.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
             } else {
                 await profile.save();
-                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e74c3c').setDescription(`💥 **CRASH!** Kamu menabrak pembatas jalan. Beruntung kamu selamat, tapi tidak dapat hadiah.${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e74c3c').setDescription(`💥 **CRASH!** Kamu menabrak pembatas jalan. Beruntung kamu selamat, tapi tidak dapat hadiah.${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
             }
         }
 
@@ -433,17 +436,17 @@ module.exports = {
 
             if (roll <= winChance) {
                 const reward = Math.floor(Math.random() * 8000) + 4000;
-                profile.economy.wallet += reward; await profile.save();
+                profile.economy_wallet += reward; await profile.save();
                 const text = isHack ? `💻 Berhasil meretas server bank asing!` : `🕵️ Berhasil menyelinap ke brankas kasino!`;
                 
-                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2ecc71').setDescription(`${text} Mengamankan **+${reward.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#2ecc71').setDescription(`${text} Mengamankan **+${reward.toLocaleString()}** ${coin}!${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
             } else {
                 const denda = Math.floor(Math.random() * 1500) + 500;
-                profile.economy.wallet -= denda; 
-                if (profile.economy.wallet < 0) profile.economy.wallet = 0;
+                profile.economy_wallet -= denda; 
+                if (profile.economy_wallet < 0) profile.economy_wallet = 0;
                 await profile.save();
                 
-                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e74c3c').setDescription(`🚨 **TERTANGKAP!** Kamu didenda **-${denda.toLocaleString()}** ${coin} untuk menebus diri dari penjara.${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy.wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
+                return interaction.editReply({ embeds: [new EmbedBuilder().setColor('#e74c3c').setDescription(`🚨 **TERTANGKAP!** Kamu didenda **-${denda.toLocaleString()}** ${coin} untuk menebus diri dari penjara.${itemStr}\n\n> 💳 **Saldo Saat Ini:** **${profile.economy_wallet.toLocaleString()}** ${coin}\n> ⏳ **Cooldown:** ${msToTime(cd.finalCooldown)}${cdReducStr}`)] });
             }
         }
     }
