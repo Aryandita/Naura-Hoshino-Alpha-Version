@@ -39,13 +39,14 @@ class MusicManager {
     }
 
     initialize() {
-        console.log('\x1b[36m[🎵 AUDIO ENGINE]\x1b[0m Menginisialisasi sistem musik Lavalink...');
+        // FORMAT BARU: Log Audio Init (Ungu / Magenta)
+        console.log('\x1b[45m\x1b[37m 🎵 AUDIO \x1b[0m \x1b[35mMenginisialisasi sistem musik Lavalink...\x1b[0m');
         this.poru.init(this.client);
 
         this.poru.on('nodeConnect', async (node) => {
-            console.log(`\x1b[32m[🎵 LAVALINK]\x1b[0m Node ${node.name} Tersambung.`);
+            // FORMAT BARU: Log Node Connect (Hijau)
+            console.log(`\x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32mNode Lavalink [${node.name}] Tersambung.\x1b[0m`);
             try {
-                // PERBAIKAN: Mengambil data JSON dari MySQL
                 const allSettings = await GuildSettings.findAll();
                 let restoredCount = 0;
 
@@ -74,7 +75,8 @@ class MusicManager {
                     }
                 }
                 if (restoredCount > 0) {
-                    console.log(`\x1b[36m[🔄 RESURRECTOR]\x1b[0m Berhasil membangkitkan Naura ke ${restoredCount} Voice Channel!`);
+                    // FORMAT BARU: Log Resurrector (Ungu / Magenta)
+                    console.log(`\x1b[45m\x1b[37m 🔄 RESURRECT \x1b[0m \x1b[35mBerhasil membangkitkan Naura ke ${restoredCount} Voice Channel!\x1b[0m`);
                 }
             } catch (e) {
                 logError('Resurrector Error', e);
@@ -82,7 +84,9 @@ class MusicManager {
         });
 
         this.poru.on('nodeError', (node, error) => logError(`Lavalink Error (${node.name})`, error));
-        this.poru.on('nodeDisconnect', (node) => console.log(`\x1b[33m[🎵 LAVALINK]\x1b[0m Node ${node.name} Terputus!`));
+        
+        // FORMAT BARU: Log Node Disconnect (Kuning)
+        this.poru.on('nodeDisconnect', (node) => console.log(`\x1b[43m\x1b[30m ⚠️ WARNING \x1b[0m \x1b[33mNode Lavalink [${node.name}] Terputus!\x1b[0m`));
 
         // ==========================================
         // 🎮 SISTEM PENANGKAP TOMBOL & DROPDOWN
@@ -130,7 +134,6 @@ class MusicManager {
                 else if (id === 'music_stop') {
                     player.is247 = false; 
                     
-                    // PERBAIKAN: Menggunakan save() MySQL daripada findOneAndUpdate MongoDB
                     try {
                         const [guildData] = await GuildSettings.findOrCreate({ where: { guildId: interaction.guildId } });
                         let musicData = guildData.music || {};
@@ -173,7 +176,6 @@ class MusicManager {
                     player.is247 = !player.is247;
                     responseMsg = `${ui.getEmoji('music247')} Mode Siaga 24/7 ${player.is247 ? '**DIAKTIFKAN**' : '**DIMATIKAN**'}.`;
 
-                    // PERBAIKAN: Format penyimpanan 24/7 ke MySQL
                     try {
                         const [guildData] = await GuildSettings.findOrCreate({ where: { guildId: interaction.guildId } });
                         let musicData = guildData.music || {};
@@ -346,7 +348,8 @@ class MusicManager {
         });
 
         this.poru.on('trackError', (player, track, error) => {
-            console.log(`\x1b[31m[🎵 LAVALINK]\x1b[0m Lagu diblokir/error: ${track?.info?.title}`);
+            // FORMAT BARU: Log Audio Error (Merah)
+            console.log(`\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mLagu diblokir/error: ${track?.info?.title}\x1b[0m`);
             if (player.panelUpdateInterval) clearInterval(player.panelUpdateInterval);
             player.autoplayErrorCount = (player.autoplayErrorCount || 0) + 1;
         });
@@ -375,7 +378,8 @@ class MusicManager {
                         player.isResolvingAutoplay = true;
                         
                         setTimeout(async () => {
-                            console.log('\x1b[36m[📻 AUTOPLAY]\x1b[0m Mencari lagu...');
+                            // FORMAT BARU: Log Autoplay Scan (Cyan/Biru Muda)
+                            console.log('\x1b[46m\x1b[30m 📻 AUTOPLAY \x1b[0m \x1b[36mMencari lagu...\x1b[0m');
                             try {
                                 const searchRes = await this.poru.resolve({ 
                                     query: `https://www.youtube.com/watch?v=${player.previousTrack.info.identifier}&list=RD${player.previousTrack.info.identifier}`, 
