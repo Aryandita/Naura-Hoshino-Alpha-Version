@@ -164,7 +164,8 @@ module.exports = (client) => {
     });
 
     app.listen(port, () => {
-        console.log(`\x1b[35m[🌐 WEB]\x1b[0m Web Dashboard Naura berhasil berjalan di \x1b[36mhttp://localhost:${port}\x1b[0m`);
+        // FORMAT BARU: Log Web UI (Biru)
+        console.log(`\x1b[44m\x1b[37m 🌐 WEB UI \x1b[0m \x1b[34mWeb Dashboard Naura berhasil berjalan di http://localhost:${port}\x1b[0m`);
     });
 };
 
@@ -177,7 +178,7 @@ function formatUptime(ms) {
     totalSeconds %= 3600;
     let minutes = Math.floor(totalSeconds / 60);
     
-    if (days > 0) return \`\${days}d \${hours}h\`;
-    if (hours > 0) return \`\${hours}h \${minutes}m\`;
-    return \`\${minutes}m\`;
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
 }
