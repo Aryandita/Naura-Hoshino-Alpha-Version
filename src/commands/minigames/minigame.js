@@ -3,12 +3,8 @@ const UserProfile = require('../../models/UserProfile');
 const ui = require('../../config/ui');
 const { GoogleGenAI } = require('@google/genai');
 
-// Inisialisasi Otak Gemini untuk membuat soal otomatis
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// ==========================================
-// 🧠 DATABASE CADANGAN & GENERATOR
-// ==========================================
 const triviaDBFallback = {
     pemula: [{ q: 'Apa ibukota negara Indonesia?', options: ['Jakarta', 'Bandung', 'Surabaya', 'Medan'], a: 'Jakarta' }, { q: 'Benda langit yang mengelilingi bumi adalah?', options: ['Matahari', 'Bulan', 'Bintang', 'Mars'], a: 'Bulan' }],
     lanjut: [{ q: 'Siapa penemu bola lampu pijar?', options: ['Albert Einstein', 'Thomas Edison', 'Nikola Tesla', 'Isaac Newton'], a: 'Thomas Edison' }, { q: 'Gunung tertinggi di Pulau Jawa adalah?', options: ['Gunung Merapi', 'Gunung Bromo', 'Gunung Semeru', 'Gunung Rinjani'], a: 'Gunung Semeru' }],
@@ -48,19 +44,16 @@ module.exports = {
         .addSubcommand(sub => sub.setName('wordle').setDescription('Tebak kata rahasia 5 huruf (6 kesempatan).').addIntegerOption(opt => opt.setName('taruhan').setDescription('Jumlah taruhan koin').setRequired(true))),
 
     async execute(interaction) {
-        // Tahan respons agar aman dari timeout Discord (15 menit limit)
         await interaction.deferReply();
 
         const subcommand = interaction.options.getSubcommand();
         const user = interaction.user;
         
-        let profile = await UserProfile.findOne({ userId: user.id }) || await UserProfile.create({ userId: user.id });
-        if (!profile.minigames) profile.minigames = { mathScore: 0, triviaScore: 0, rpsWin: 0, tttWin: 0, wordleWin: 0 };
-        if (!profile.economy) profile.economy = { wallet: 0, bank: 0 };
+        // PERBAIKAN: Menggunakan Sequelize findOrCreate dan kolom flat
+        let [profile] = await UserProfile.findOrCreate({ where: { userId: user.id } });
 
         const coinEmoji = ui.emojis.coin || '🪙';
         const errorEmoji = ui.emojis.error || '❌';
-
         const sendError = (msg) => interaction.editReply({ embeds: [new EmbedBuilder().setColor('#FF0000').setDescription(`${errorEmoji} ${msg}`)] });
 
         // ==========================================
@@ -134,8 +127,8 @@ module.exports = {
                 );
 
                 if (selectedIndex === correctIndex) {
-                    profile.economy.wallet += conf.coin;
-                    profile.minigames.triviaScore += conf.score;
+                    profile.economy_wallet += conf.coin;
+                    profile.minigame_triviaScore += conf.score;
                     await profile.save();
                     await i.update({ content: `🎉 **TEPAT SEKALI!** Kamu mendapat **${conf.coin}** ${coinEmoji}!`, components: [newRow] });
                 } else {
@@ -175,8 +168,8 @@ module.exports = {
 
             collector.on('collect', async m => {
                 if (m.content.trim() === mathData.answer) {
-                    profile.economy.wallet += conf.coin;
-                    profile.minigames.mathScore += conf.score;
+                    profile.economy_wallet += conf.coin;
+                    profile.minigame_mathScore += conf.score;
                     await profile.save();
                     m.reply(`✅ **BENAR!** Jawaban yang tepat adalah **${mathData.answer}**.\nKamu mendapatkan **${conf.coin}** ${coinEmoji} dan **${conf.score}** Poin Math!`);
                 } else {
@@ -194,7 +187,7 @@ module.exports = {
         // ==========================================
         else if (subcommand === 'rps') {
             const taruhan = interaction.options.getInteger('taruhan');
-            if (taruhan <= 0 || profile.economy.wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
+            if (taruhan <= 0 || profile.economy_wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
 
             const embed = new EmbedBuilder()
                 .setColor(ui.colors.primary || '#00FFFF')
@@ -230,12 +223,12 @@ module.exports = {
                     (userChoice === 'gunting' && botChoice === 'kertas') ||
                     (userChoice === 'kertas' && botChoice === 'batu')
                 ) {
-                    profile.economy.wallet += taruhan; 
-                    profile.minigames.rpsWin += 1;
+                    profile.economy_wallet += taruhan; 
+                    profile.minigame_rpsWin += 1;
                     result = `MENANG! Bot memilih **${botChoice}**.\nKamu memenangkan **${(taruhan * 2).toLocaleString()}** ${coinEmoji}!`;
                     color = '#00FF00';
                 } else {
-                    profile.economy.wallet -= taruhan; 
+                    profile.economy_wallet -= taruhan; 
                     result = `KALAH! Bot memilih **${botChoice}**.\nKamu kehilangan taruhanmu.`;
                     color = '#FF0000';
                 }
@@ -261,7 +254,7 @@ module.exports = {
         // ==========================================
         else if (subcommand === 'tictactoe') {
             const taruhan = interaction.options.getInteger('taruhan');
-            if (taruhan <= 0 || profile.economy.wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
+            if (taruhan <= 0 || profile.economy_wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
 
             let board = [0, 1, 2, 3, 4, 5, 6, 7, 8]; 
             const checkWin = (b) => {
@@ -317,11 +310,11 @@ module.exports = {
                 if (status) {
                     let msg = '';
                     if (status === 'X') {
-                        profile.economy.wallet += taruhan; 
-                        profile.minigames.tttWin += 1;
+                        profile.economy_wallet += taruhan; 
+                        profile.minigame_tttWin += 1;
                         msg = `🏆 **KAMU MENANG!** Kamu mendapatkan **${(taruhan*2).toLocaleString()}** ${coinEmoji}.`;
                     } else if (status === 'O') {
-                        profile.economy.wallet -= taruhan; 
+                        profile.economy_wallet -= taruhan; 
                         msg = `💀 **KAMU KALAH!** Bot AI memenangkan taruhanmu.`;
                     } else {
                         msg = `🤝 **SERI!** Permainan imbang, koin dikembalikan.`;
@@ -337,7 +330,7 @@ module.exports = {
 
             collector.on('end', collected => {
                 if (checkWin(board) === null) {
-                    profile.economy.wallet -= taruhan; 
+                    profile.economy_wallet -= taruhan; 
                     profile.save();
                     interaction.editReply({ content: `⏰ **WAKTU HABIS!** Kamu dianggap WO dan kehilangan taruhan.`, components: buildBoardUI(board, true) }).catch(()=>{});
                 }
@@ -349,14 +342,14 @@ module.exports = {
         // ==========================================
         else if (subcommand === 'wordle') {
             const taruhan = interaction.options.getInteger('taruhan');
-            if (taruhan <= 0 || profile.economy.wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
+            if (taruhan <= 0 || profile.economy_wallet < taruhan) return sendError(`Taruhan tidak valid atau saldo kurang!`);
 
             const targetWord = wordleWords[Math.floor(Math.random() * wordleWords.length)];
             let attempts = 0;
             const maxAttempts = 6;
             let gridHistory = [];
 
-            profile.economy.wallet -= taruhan; 
+            profile.economy_wallet -= taruhan; 
             await profile.save();
 
             const embed = new EmbedBuilder()
@@ -397,8 +390,8 @@ module.exports = {
                 gridHistory.push(`\`${guess}\` | ${resultRow}`);
 
                 if (guess === targetWord) {
-                    profile.economy.wallet += (taruhan * 3); 
-                    profile.minigames.wordleWin += 1;
+                    profile.economy_wallet += (taruhan * 3); 
+                    profile.minigame_wordleWin += 1;
                     await profile.save();
                     
                     const winEmbed = new EmbedBuilder()
@@ -446,10 +439,10 @@ module.exports = {
             const isMath = category === 'math';
             const title = isMath ? '🧮 Top 10 GrandMaster Matematika' : '🧠 Top 10 GrandMaster Trivia';
 
-            const allUsers = await UserProfile.find({});
+            const allUsers = await UserProfile.findAll();
             const sortedUsers = allUsers
-                .filter(u => u.minigames && (isMath ? u.minigames.mathScore > 0 : u.minigames.triviaScore > 0))
-                .sort((a, b) => (isMath ? b.minigames.mathScore - a.minigames.mathScore : b.minigames.triviaScore - a.minigames.triviaScore))
+                .filter(u => isMath ? u.minigame_mathScore > 0 : u.minigame_triviaScore > 0)
+                .sort((a, b) => (isMath ? b.minigame_mathScore - a.minigame_mathScore : b.minigame_triviaScore - a.minigame_triviaScore))
                 .slice(0, 10);
 
             if (sortedUsers.length === 0) return sendError('Belum ada yang mencetak skor di kuis ini.');
@@ -457,7 +450,7 @@ module.exports = {
             let descString = `> Inilah daftar pemain kuis terbaik di server!\n\n`;
             sortedUsers.forEach((u, i) => {
                 let medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅';
-                const score = isMath ? u.minigames.mathScore : u.minigames.triviaScore;
+                const score = isMath ? u.minigame_mathScore : u.minigame_triviaScore;
                 descString += `${medal} **#${i + 1}** | <@${u.userId}>\n> 🏆 Skor: **${score.toLocaleString()}** Poin\n\n`;
             });
 
