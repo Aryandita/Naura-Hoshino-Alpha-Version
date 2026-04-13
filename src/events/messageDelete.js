@@ -4,6 +4,12 @@ const config = require('../config.json');
 module.exports = async (client, message) => {
     // Abaikan jika pesan dari bot atau tidak ada di server
     if (message.author?.bot || !message.guild) return;
+    client.snipes.set(message.channel.id, {
+        content: message.content,
+        author: message.author,
+        image: message.attachments.first()?.proxyURL || null,
+        timestamp: Date.now()
+    });
     if (!message.content) return; // Abaikan jika pesan hanya berisi embed/gambar tanpa teks
 
     const logChannel = message.guild.channels.cache.get(config.ticket.logChannelId);
