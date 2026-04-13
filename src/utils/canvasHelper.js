@@ -75,7 +75,7 @@ const drawArcProgressBar = (ctx, x, y, radius, current, total, color, width) => 
 };
 
 // ==========================================
-// 🎵 FUNGSI 1: MEMBUAT KARTU MUSIC PROFILE (image_a0fca5.jpg)
+// 🎵 FUNGSI 1: MEMBUAT KARTU MUSIC PROFILE
 // ==========================================
 async function generateMusicProfileImage(user, stats, clientAvatar) {
     const canvas = createCanvas(600, 400); // Ukuran kartu profesional
@@ -140,7 +140,7 @@ async function generateMusicProfileImage(user, stats, clientAvatar) {
 }
 
 // ==========================================
-// 🎧 FUNGSI 2: MEMBUAT KARTU MUSIC PANEL (Now Playing) (image_a0fbd4.jpg)
+// 🎧 FUNGSI 2: MEMBUAT KARTU MUSIC PANEL
 // ==========================================
 async function generateMusicPanelImage(track, currentPos, clientAvatar) {
     const canvas = createCanvas(600, 280); // Ukuran panel simetris
@@ -177,8 +177,8 @@ async function generateMusicPanelImage(track, currentPos, clientAvatar) {
     // Teks Waktu (Di bawah Arc)
     ctx.fillStyle = UI_COLORS.textSub;
     ctx.font = '14px sans-serif';
-    ctx.fillText(formatDuration(currentPos), 430, 230);
-    ctx.fillText(formatDuration(track.info.length), 530, 230);
+    ctx.fillText(formatDur(currentPos), 430, 230);
+    ctx.fillText(formatDur(track.info.length), 530, 230);
     
     // 6. Header Naura branding
     ctx.fillStyle = UI_COLORS.primary;
