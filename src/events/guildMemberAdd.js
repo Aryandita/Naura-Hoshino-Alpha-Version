@@ -1,5 +1,5 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const Canvas = require('canvas');
+const { createCanvas, loadImage } = require('@napi-rs/canvas'); // Menggunakan mesin baru
 const GuildSettings = require('../models/GuildSettings');
 
 module.exports = {
@@ -28,7 +28,7 @@ module.exports = {
             // ==========================================
             // 🎨 PEMBUATAN KANVAS (TEMA: PINK PASTEL FUTURISTIK)
             // ==========================================
-            const canvas = Canvas.createCanvas(1024, 450);
+            const canvas = createCanvas(1024, 450);
             const ctx = canvas.getContext('2d');
 
             // 1. Background (Gradient Pink Pastel ke Cyberpunk Dark Blue)
@@ -67,7 +67,7 @@ module.exports = {
             ctx.closePath();
             ctx.clip();
 
-            const avatar = await Canvas.loadImage(member.user.displayAvatarURL({ extension: 'png', size: 256 }));
+            const avatar = await loadImage(member.user.displayAvatarURL({ extension: 'png', size: 256 }));
             ctx.drawImage(avatar, avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
             ctx.restore();
 
@@ -89,7 +89,7 @@ module.exports = {
             ctx.fillText(`Member #${member.guild.memberCount}`, 512, 435);
 
             // Bungkus dalam AttachmentBuilder Discord
-            const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: `welcome-${member.user.id}.png` });
+            const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: `welcome-${member.user.id}.png` });
 
             // ==========================================
             // ✉️ PENGIRIMAN PESAN
