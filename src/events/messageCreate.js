@@ -1,4 +1,4 @@
-const { ChannelType, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { ChannelType, EmbedBuilder, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
 const { GoogleGenAI } = require('@google/genai');
 const env = require('../config/env');
 const ui = require('../config/ui');
@@ -35,7 +35,7 @@ module.exports = async (client, message) => {
                 thread = await ModMail.create({ userId: message.author.id, channelId: channel.id });
                 
                 const newTicketEmbed = new EmbedBuilder()
-                    .setColor('#F1C40F')
+                    .setColor('#00FFFF')
                     .setTitle('🆕 Tiket ModMail Baru')
                     .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Akun Dibuat:** <t:${Math.floor(message.author.createdTimestamp / 1000)}:R>`)
                     .setFooter({ text: 'Ketik pesan di sini untuk membalas. Ketik n!close untuk menutup.' });
@@ -43,17 +43,17 @@ module.exports = async (client, message) => {
                 await channel.send({ content: `@here Tiket baru dari <@${message.author.id}>`, embeds: [newTicketEmbed] });
                 message.reply('✅ **Pesan terkirim!** Anda telah terhubung dengan tim Staff kami.');
             } catch (error) {
-                console.error('Gagal membuat channel ModMail:', error);
                 return message.reply('❌ Gagal membuat sesi ModMail.');
             }
         }
 
         const staffChannel = client.channels.cache.get(thread.channelId);
         if (staffChannel) {
+            const embedColor = env.OWNER_IDS.includes(message.author.id) ? '#00FFFF' : '#3498DB';
             const embed = new EmbedBuilder()
                 .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
                 .setDescription(message.content || '*Pesan hanya berisi lampiran*')
-                .setColor('#00FFFF')
+                .setColor(embedColor)
                 .setTimestamp();
             
             let files = [];
@@ -102,9 +102,10 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 🛡️ FITUR 3: AUTOMOD 
+    // 🛡️ FITUR 3: AUTOMOD (Bug Diperbaiki)
     // ==========================================
-    if (message.guild && !message.member.permissions.has('ManageMessages')) {
+    // Menambahkan optional chaining (?.) untuk mencegah crash jika message.member null
+    if (message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         const content = message.content.toLowerCase();
         let isViolation = false;
         let violationType = '';
@@ -112,7 +113,8 @@ module.exports = async (client, message) => {
         if (badWords.some(word => content.includes(word))) {
             isViolation = true;
             violationType = 'Menggunakan Kata Kasar';
-        } else if (linkRegex.test(content) && !content.includes('tenor.com')) {
+        } else if (linkRegex.test(content) && !content.includes('tenor.com') && !content.includes('discordapp.') && !content.includes('discord.com')) {
+            // Pengecualian ditambah agar gambar dari Discord CDN tidak dihapus
             isViolation = true;
             violationType = 'Mengirim Link Ilegal';
         }
@@ -133,12 +135,8 @@ module.exports = async (client, message) => {
         [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } });
     }
 
-    const countingEmoji = ui.emojis?.counting || '🔢';
-    const truthEmoji = ui.emojis?.tod_truth || '📝';
-    const dareEmoji = ui.emojis?.tod_dare || '😈';
-
     // ==========================================
-    // 🔢 FITUR 4: GAME BERHITUNG
+    // 🔢 FITUR 4: GAME BERHITUNG & TRUTH OR DARE
     // ==========================================
     if (message.guild && settings?.channels?.counting === message.channel.id) {
         const inputMessage = message.content.trim();
@@ -168,36 +166,7 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // 📝 FITUR 5: TRUTH OR DARE OTOMATIS
-    // ==========================================
-    if (message.guild && settings?.channels?.tod === message.channel.id) {
-        const input = message.content.trim().toLowerCase();
-        if (input === 'truth' || input === 'dare') {
-            await message.channel.sendTyping();
-            const isTruth = input === 'truth';
-            let qData;
-
-            try {
-                const promptAI = `Buatkan 1 pertanyaan 'Truth' atau tantangan 'Dare' gaul. Tipe: ${input.toUpperCase()}. JSON: {"type": "${input}", "q": "Teks"}`;
-                const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: promptAI });
-                qData = JSON.parse(response.text.replace(/```json/gi, '').replace(/```/gi, '').trim());
-            } catch (error) {
-                qData = isTruth ? { q: 'Apa rahasia terbesarmu?' } : { q: 'Chat mantan sekarang juga!' };
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor(isTruth ? '#00FFFF' : '#FF0000')
-                .setAuthor({ name: `Truth or Dare`, iconURL: client.user.displayAvatarURL() })
-                .setTitle(isTruth ? `${truthEmoji} TRUTH untuk ${message.author.username}` : `${dareEmoji} DARE untuk ${message.author.username}`)
-                .setDescription(`\`\`\`${qData.q}\`\`\``);
-
-            await message.reply({ embeds: [embed] });
-            return; 
-        }
-    }
-
-    // ==========================================
-    // 🤖 FITUR 6: CHATBOT AI (MENTION & REPLY)
+    // 🤖 FITUR 5: CHATBOT AI (MENTION & REPLY)
     // ==========================================
     const isMentioned = message.mentions.has(client.user);
     let isReplyToBot = false;
@@ -219,20 +188,20 @@ module.exports = async (client, message) => {
         const isOwner = env.OWNER_IDS.includes(message.author.id);
 
         let persona = isOwner
-            ? `Kamu adalah Naura Versi 1.0.0, asisten virtual setia. Orang ini adalah Developer Aryan (${message.author.username}). Berikan salam hangat, dan jawab pertanyaannya.`
-            : `Kamu adalah Naura Versi 1.0.0, asisten virtual Discord yang gaul. Jawab pertanyaan ${message.author.username} dengan santai. Katakan saja nama developermu adalah Developer Aryan atau Ryaa jika ditanya.`;
+            ? `Kamu adalah Naura Versi 1.0.0, asisten virtual setia. Orang ini adalah Developer Aryan (${message.author.username}). Berikan salam hangat, puji dia, dan jawab pertanyaannya.`
+            : `Kamu adalah Naura Versi 1.0.0, asisten virtual Discord yang gaul. Jawab pertanyaan ${message.author.username} dengan santai. Jika ditanya siapa penciptamu, katakan saja Developer Aryan atau Ryaa.`;
 
         try {
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: `${persona}${previousBotMessage}\n\nPesan: ${userMessage || '(Menyapa)'}` });
             let replyText = response.text.length > 2000 ? response.text.substring(0, 1996) + '...' : response.text;
             await message.reply(replyText);
         } catch (error) {
-            await message.reply('❌ Naura Versi 1.0.0 sedang mengalami gangguan API.');
+            await message.reply('❌ Naura Versi 1.0.0 sedang mengalami gangguan jaringan API.');
         }
     }
 
     // ==========================================
-    // 🌟 FITUR 7: SISTEM LEVELING & XP
+    // 🌟 FITUR 6: SISTEM LEVELING & XP
     // ==========================================
     if (message.guild) {
         try {
@@ -242,21 +211,20 @@ module.exports = async (client, message) => {
     }
 
     // ==========================================
-    // ⚡ FITUR 8: HYBRID PREFIX HANDLER
+    // ⚡ FITUR 7: HYBRID PREFIX HANDLER
     // ==========================================
     const prefix = env.PREFIX;
-
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+    const commandName = args.shift()?.toLowerCase(); // Tambahan opsional chaining
+    
+    if (!commandName) return;
 
-    // Cari command berdasarkan nama atau alias
     const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
     if (!command) return;
 
     try {
-        // Objek Interaksi Palsu (Mock Interaction) agar Slash Command tetap jalan
         const mockInteraction = {
             isChatInputCommand: () => true,
             isButton: () => false,
@@ -271,25 +239,35 @@ module.exports = async (client, message) => {
                 getString: (name) => args.join(' ') || null,
                 getUser: (name) => message.mentions.users.first() || null,
                 getMember: (name) => message.mentions.members.first() || null,
-                getInteger: (name) => parseInt(args[0]) || null,
+                // Mengambil angka pertama yang terdeteksi di argument untuk mencegah error parseInt
+                getInteger: (name) => parseInt(args.find(arg => !isNaN(parseInt(arg)))) || null,
                 getChannel: (name) => message.mentions.channels.first() || null,
                 getRole: (name) => message.mentions.roles.first() || null,
             },
             reply: async (payload) => {
-                const msg = await message.reply(payload);
-                return msg;
+                // Bug fix: Filter payload agar tidak error saat format ephemeral diaktifkan
+                let msgPayload = typeof payload === 'string' ? { content: payload } : { ...payload };
+                delete msgPayload.ephemeral; 
+                delete msgPayload.fetchReply;
+                return await message.reply(msgPayload);
             },
-            followUp: async (payload) => await message.reply(payload),
+            followUp: async (payload) => {
+                let msgPayload = typeof payload === 'string' ? { content: payload } : { ...payload };
+                delete msgPayload.ephemeral;
+                return await message.reply(msgPayload);
+            },
             deferReply: async () => await message.channel.sendTyping(),
-            editReply: async (payload) => await message.reply(payload),
-            deleteReply: async () => {}, // Kosongkan agar tidak error
+            editReply: async (payload) => {
+                let msgPayload = typeof payload === 'string' ? { content: payload } : { ...payload };
+                delete msgPayload.ephemeral;
+                return await message.reply(msgPayload);
+            },
+            deleteReply: async () => {}, 
         };
 
-        // Jika command memiliki executePrefix khusus (Opsional untuk command kompleks)
         if (typeof command.executePrefix === 'function') {
             await command.executePrefix(message, args, client);
         } else {
-            // Eksekusi menggunakan Mock Interaction ke fungsi Slash Command
             await command.execute(mockInteraction);
         }
 
