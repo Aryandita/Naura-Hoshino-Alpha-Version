@@ -1,91 +1,81 @@
-const { ChannelType, PermissionFlagsBits } = require('discord.js');
-const GuildSettings = require('../models/GuildSettings');
+const { ChannelType, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const config = require('../config.json');
+const ui = require('../config/ui');
 
 module.exports = {
     name: 'voiceStateUpdate',
     async execute(oldState, newState, client) {
-        // Abaikan jika tidak ada perubahan channel (hanya mute/unmute)
-        if (oldState.channelId === newState.channelId) return;
+        const { member, guild } = newState;
+        const tempConfig = config.tempvoice;
 
-        try {
-            // Ambil data dari database
-            const guildData = await GuildSettings.findOne({ guildId: newState.guild.id });
-            
-            // Jika belum pernah disetup, hentikan proses
-            if (!guildData || !guildData.tempVoice) return;
+        // Jika fitur dinonaktifkan di config.json, abaikan
+        if (!tempConfig || !tempConfig.enabled) return;
 
-            const { channelId, categoryId } = guildData.tempVoice;
-
-            // ==========================================
-            // ➕ DETEKSI USER MASUK "JOIN TO CREATE"
-            // ==========================================
-            if (newState.channelId === channelId) {
-                console.log(`[🔊 TEMP VOICE] Mendeteksi ${newState.member.user.tag} masuk ke channel pembuat.`);
-                
-                const member = newState.member;
-                const guild = newState.guild;
-
-                // Pastikan bot punya permission sebelum mencoba membuat channel
-                if (!guild.members.me.permissions.has(PermissionFlagsBits.ManageChannels)) {
-                    console.log(`[❌ ERROR] Bot tidak punya izin 'Manage Channels' di server ini!`);
-                    return;
-                }
-
-                console.log(`[🔊 TEMP VOICE] Sedang membuat ruangan baru untuk ${member.user.username}...`);
-                
-                // Membuat Voice Channel Baru
-                const newChannel = await guild.channels.create({
+        // ==========================================
+        // 🔊 LOGIKA 1: MEMBER MASUK KE TRIGGER CHANNEL
+        // ==========================================
+        if (newState.channelId === tempConfig.triggerChannelId) {
+            try {
+                // Membuat Voice Channel baru
+                const tempChannel = await guild.channels.create({
                     name: `🔊 ${member.user.username}'s Room`,
                     type: ChannelType.GuildVoice,
-                    parent: categoryId,
+                    parent: tempConfig.categoryId,
                     permissionOverwrites: [
                         {
-                            id: member.user.id,
+                            id: member.id,
                             allow: [
-                                PermissionFlagsBits.ManageChannels,
-                                PermissionFlagsBits.MoveMembers,
-                                PermissionFlagsBits.Connect,
-                                PermissionFlagsBits.Speak
-                            ]
+                                PermissionFlagsBits.ManageChannels, 
+                                PermissionFlagsBits.Connect, 
+                                PermissionFlagsBits.Speak,
+                                PermissionFlagsBits.MuteMembers,
+                                PermissionFlagsBits.DeafenMembers
+                            ],
                         },
                         {
-                            // Pastikan bot juga punya full akses di channel ini
-                            id: guild.members.me.id,
-                            allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers, PermissionFlagsBits.ViewChannel]
+                            id: guild.id, // @everyone
+                            allow: [PermissionFlagsBits.Connect],
                         }
-                    ]
+                    ],
                 });
 
-                console.log(`[🔊 TEMP VOICE] Ruangan berhasil dibuat! Memindahkan user...`);
+                // Memindahkan member ke channel baru tersebut
+                await member.voice.setChannel(tempChannel);
 
-                // Tunggu jeda sangat sebentar agar Discord API sinkron, lalu pindahkan user
-                setTimeout(async () => {
-                    await member.voice.setChannel(newChannel).catch(err => {
-                        console.error(`[❌ ERROR] Gagal memindahkan user:`, err.message);
-                    });
-                }, 1000);
+                // --- MENGIRIM CONTROL PANEL (ALL-IN-ONE) ---
+                const controlEmbed = new EmbedBuilder()
+                    .setColor(ui.getColor('primary')) // Warna Aqua khusus Aryan
+                    .setTitle('🎛️ Voice Control Panel')
+                    .setDescription(`Selamat datang di channel pribadimu, <@${member.id}>!\n\nGunakan tombol di bawah untuk mengatur channel ini.\n\n${ui.getEmoji('progressDot')} **Lock:** Orang lain tidak bisa masuk.\n${ui.getEmoji('progressDot')} **Unlock:** Membuka channel kembali.\n${ui.getEmoji('progressDot')} **Rename:** Mengubah nama channel.\n${ui.getEmoji('progressDot')} **Limit:** Membatasi jumlah orang.`)
+                    .setFooter({ text: 'Hanya pemilik channel yang dapat menggunakan tombol ini.' });
+
+                const row1 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('tvc_lock').setLabel('Lock').setEmoji('🔒').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('tvc_unlock').setLabel('Unlock').setEmoji('🔓').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('tvc_rename').setLabel('Rename').setEmoji('✏️').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId('tvc_limit').setLabel('Limit').setEmoji('👥').setStyle(ButtonStyle.Primary)
+                );
+
+                await tempChannel.send({ embeds: [controlEmbed], components: [row1] });
+
+            } catch (error) {
+                console.error('\x1b[31m[VOICE ERROR]\x1b[0m Gagal memproses TempVoice:', error);
             }
+        }
 
-            // ==========================================
-            // 🗑️ DETEKSI USER KELUAR (AUTO DELETE)
-            // ==========================================
-            if (oldState.channelId && oldState.channelId !== channelId) {
-                const oldChannel = oldState.channel;
-                
-                // Pastikan channel yang ditinggalkan ada di kategori TempVoice dan BUKAN "Join to Create"
-                if (oldChannel && oldChannel.parentId === categoryId && oldChannel.id !== channelId) {
-                    
-                    // Jika channel kosong (0 member)
-                    if (oldChannel.members.size === 0) {
-                        console.log(`[🗑️ TEMP VOICE] Ruangan ${oldChannel.name} kosong, sedang menghapus...`);
-                        await oldChannel.delete('Temp Voice Kosong').catch(err => {
-                            console.error(`[❌ ERROR] Gagal menghapus ruangan:`, err.message);
-                        });
-                    }
+        // ==========================================
+        // 🗑️ LOGIKA 2: MEMBER KELUAR & HAPUS CHANNEL KOSONG
+        // ==========================================
+        if (oldState.channelId) {
+            const oldChannel = oldState.channel;
+            
+            // Cek apakah channel tersebut berada di kategori TempVoice
+            if (oldChannel && oldChannel.parentId === tempConfig.categoryId && oldChannel.id !== tempConfig.triggerChannelId) {
+                // Jika channel kosong (0 member), hapus
+                if (oldChannel.members.size === 0) {
+                    await oldChannel.delete().catch(() => {});
                 }
             }
-        } catch (error) {
-            console.error('[💥 FATAL ERROR] Terjadi kesalahan pada sistem Temp Voice:', error);
         }
-    }
+    },
 };
