@@ -31,8 +31,9 @@ class CommandHandler {
             delete require.cache[require.resolve(filePath)];
             const command = require(filePath);
             
-            if ('data' in command && 'execute' in command) {
-              const cmdName = command.data.name;
+            // PERBAIKAN: Dukung Slash Commands (`command.data`) DAN Prefix Commands (`command.name`)
+            if (('data' in command || 'name' in command) && 'execute' in command) {
+              const cmdName = command.data ? command.data.name : command.name;
 
               if (commandNames.has(cmdName)) {
                 console.log(`\x1b[43m\x1b[30m ⚠️ WARNING \x1b[0m \x1b[33mDuplikat command "/${cmdName}" pada file ${file}! File dilewati.\x1b[0m`);
@@ -47,13 +48,16 @@ class CommandHandler {
                   command.aliases.forEach(alias => this.commands.set(alias, command));
               }
 
-              commandsArray.push(command.data.toJSON());
+              // Pastikan command ditaruh di list untuk di Deploy HANYA JIKA ITU SLASH COMMAND
+              if (command.data) {
+                  commandsArray.push(command.data.toJSON());
+              }
             }
           }
         }
       }
 
-      console.log(`\x1b[44m\x1b[37m 📂 COMMANDS \x1b[0m \x1b[34mMemuat ${commandsArray.length} slash command secara lokal.\x1b[0m`);
+      console.log(`\x1b[44m\x1b[37m 📂 COMMANDS \x1b[0m \x1b[34mMemuat ${this.commands.size} command secara lokal.\x1b[0m`);
 
       const rest = new REST({ version: '10' }).setToken(env.TOKEN);
       const clientId = env.CLIENT_ID;
