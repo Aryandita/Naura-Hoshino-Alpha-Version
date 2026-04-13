@@ -4,7 +4,7 @@ const env = {
     // Discord
     TOKEN: process.env.DISCORD_TOKEN,
     CLIENT_ID: process.env.CLIENT_ID,
-    // Mengubah string "id1,id2" menjadi array ['id1', 'id2']
+    PREFIX: process.env.PREFIX || 'n!',
     OWNER_IDS: process.env.OWNER_IDS ? process.env.OWNER_IDS.split(',') : [],
 
     // Database MySQL
