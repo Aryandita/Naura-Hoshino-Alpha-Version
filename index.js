@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
@@ -10,24 +10,12 @@ const MusicManager = require('./src/managers/musicManager');
 const redisManager = require('./src/managers/redisManager');
 const { logError } = require('./src/managers/logger'); 
 const RssManager = require('./src/managers/rssManager');
-
-// ==========================================
-// 🛡️ SISTEM ANTI-CRASH
-// ==========================================
-process.on('unhandledRejection', (reason, promise) => {
-    if (reason && reason.code === 10062) return; 
-    console.error('\n\x1b[41m\x1b[37m 💥 ANTI-CRASH \x1b[0m \x1b[31mTerjadi Unhandled Rejection!\x1b[0m');
-    console.error(reason); 
-});
-
-process.on('uncaughtException', (err, origin) => {
-    console.error('\n\x1b[41m\x1b[37m 💥 ANTI-CRASH \x1b[0m \x1b[31mTerjadi Uncaught Exception!\x1b[0m');
-    console.error(err);
-});
+const env = require('./src/config/env'); // Memanggil configurasi environment
 
 // ==========================================
 // 🤖 1. INISIALISASI CLIENT DISCORD
 // ==========================================
+// Client dideklarasikan lebih awal agar bisa digunakan oleh Anti-Crash
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -42,6 +30,46 @@ client.commands = new Collection();
 client.musicManager = new MusicManager(client);
 client.rssManager = new RssManager(client);
 
+// ==========================================
+// 🛡️ 2. SISTEM ANTI-CRASH PROFESIONAL
+// ==========================================
+const sendErrorLog = async (err, type) => {
+    console.error(`\n\x1b[41m\x1b[37m 💥 ANTI-CRASH \x1b[0m \x1b[31m${type}\x1b[0m`);
+    console.error(err);
+    
+    // Mengirim log error ke DM Developer Aryan / Ryaa
+    if (env.OWNER_IDS && env.OWNER_IDS.length > 0) {
+        try {
+            const ownerId = env.OWNER_IDS[0]; 
+            const owner = await client.users.fetch(ownerId).catch(() => null);
+            
+            if (owner) {
+                const errEmbed = new EmbedBuilder()
+                    .setColor('#00FFFF') // Warna Aqua Khusus Anda
+                    .setTitle(`⚠️ Naura Versi 1.0.0 - ${type}`)
+                    .setDescription(`\`\`\`js\n${String(err?.stack || err).substring(0, 4000)}\n\`\`\``)
+                    .setTimestamp();
+                
+                await owner.send({ embeds: [errEmbed] }).catch(() => {});
+            }
+        } catch (e) {
+            console.error('Gagal mengirim log error ke Developer:', e);
+        }
+    }
+};
+
+process.on('unhandledRejection', (reason, promise) => {
+    if (reason && reason.code === 10062) return; // Abaikan error "Unknown interaction" bawaan Discord
+    sendErrorLog(reason, 'Unhandled Rejection');
+});
+
+process.on('uncaughtException', (err, origin) => {
+    sendErrorLog(err, 'Uncaught Exception');
+});
+
+// ==========================================
+// 📂 3. EVENT HANDLER ROUTER
+// ==========================================
 const eventsPath = path.join(__dirname, 'src', 'events');
 if (fs.existsSync(eventsPath)) {
     const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
@@ -53,7 +81,7 @@ if (fs.existsSync(eventsPath)) {
 }
 
 // ==========================================
-// 🔄 3. FUNGSI DEPLOY COMMAND
+// 🔄 4. FUNGSI DEPLOY COMMAND
 // ==========================================
 async function syncCommandsToDiscord() {
     const commandsData = [];
@@ -69,16 +97,16 @@ async function syncCommandsToDiscord() {
             }
         }
     }
-    const rest = new REST().setToken(process.env.TOKEN);
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commandsData });
+    const rest = new REST().setToken(env.TOKEN);
+    await rest.put(Routes.applicationCommands(env.CLIENT_ID), { body: commandsData });
     return commandsData.length;
 }
 
 // ==========================================
-// 🚀 4. FUNGSI UTAMA (BOOT SEQUENCE)
+// 🚀 5. FUNGSI UTAMA (BOOT SEQUENCE)
 // ==========================================
 async function startBot() {
-    console.log('\n\x1b[46m\x1b[30m ⚙️ BOOT SEQUENCE \x1b[0m \x1b[36mMemulai proses inisialisasi sistem Naura Hoshino...\x1b[0m\n');
+    console.log('\n\x1b[46m\x1b[30m ⚙️ BOOT SEQUENCE \x1b[0m \x1b[36mMemulai proses inisialisasi sistem...\x1b[0m\n');
 
     let sysStatus = {
         mongo: '\x1b[31m🔴 OFFLINE   \x1b[0m',
@@ -115,17 +143,14 @@ async function startBot() {
             const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
             const usedRam = ((os.totalmem() - os.freemem()) / 1024 / 1024 / 1024).toFixed(2);
             const osUptime = (os.uptime() / 3600).toFixed(2);
-            const botUptime = (process.uptime() / 3600).toFixed(2);
             
             const cpuStr = os.cpus()[0].model.trim().substring(0, 48).padEnd(49);
             const ramStr = `${usedRam} GB / ${totalRam} GB`.padEnd(49);
-            const uptimeStr = `${osUptime} Jam`.padEnd(49);
             const platStr = `${os.platform()} ${os.arch()}`.substring(0, 48).padEnd(49);
             
             const tagStr = client.user.tag.padEnd(49);
-            const ownerStr = 'Aryandita Praftian'.padEnd(49);
+            const ownerStr = 'Developer Aryan / Ryaa'.padEnd(49);
 
-            // LOG DASHBOARD MEWAH (RAPI)
             console.log(`
 \x1b[38;5;51m╔══════════════════════════════════════════════════════════════════════════╗\x1b[0m
 \x1b[38;5;51m║\x1b[0m \x1b[38;5;87m███╗   ██╗ █████╗ ██╗   ██╗██████╗  █████╗ \x1b[0m                          \x1b[38;5;51m║\x1b[0m
@@ -153,13 +178,10 @@ async function startBot() {
             
             try {
                 require('./dashboard.js')(client);
-            } catch (err) {
-                console.log('\n\x1b[43m\x1b[30m ⚠️ DASHBOARD \x1b[0m \x1b[33mFile dashboard.js bermasalah atau tidak ditemukan. Dilewati.\x1b[0m');
-                console.error('\x1b[31m[Pesan Error]:\x1b[0m', err.message);
-            }
+            } catch (err) { }
         });
 
-        await client.login(process.env.TOKEN);
+        await client.login(env.TOKEN);
 
     } catch (error) {
         console.error('\n\x1b[41m\x1b[37m 💥 FATAL ERROR \x1b[0m \x1b[31mTerjadi kesalahan fatal saat booting:\x1b[0m\n', error);
