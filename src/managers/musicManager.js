@@ -1,36 +1,16 @@
 const { Poru } = require('poru');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } = require('discord.js');
 const ui = require('../config/ui');
 const { logError } = require('./logger');
 const GuildSettings = require('../models/GuildSettings');
 const UserProfile = require('../models/UserProfile');
-
-function formatDuration(ms) {
-    if (ms === 0 || !ms) return '0:00';
-    const minutes = Math.floor(ms / 60000);
-    const seconds = ((ms % 60000) / 1000).toFixed(0);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-}
-
-function createProgressBar(current, total, size = 18) {
-    // Memastikan pemanggilan UI konsisten dengan standar Getter (Atau fallback langsung)
-    const dot = ui.getEmoji ? ui.getEmoji('progressDot') : '🔘';
-    const line = ui.getEmoji ? ui.getEmoji('progressLine') : '▬';
-
-    if (total === 0 || !total) return `**\`0:00\`** \`[${dot}${line.repeat(size - 1)}]\` **\`LIVE\`**`;
-    
-    const progress = Math.round((size * current) / total);
-    const emptyProgress = size - progress;
-    const progressString = line.repeat(Math.max(0, progress)) + dot + line.repeat(Math.max(0, emptyProgress));
-    
-    return `**\`${formatDuration(current)}\`** \`[${progressString}]\` **\`${formatDuration(total)}\`**`;
-}
+const { generateMusicPanelImage } = require('../utils/canvasHelper'); // Impor Utilitas Canvas
 
 class MusicManager {
     constructor(client) {
         this.client = client;
         const nodes = [{
-            name: 'Naura Primary Node',
+            name: 'Naura VIP Node',
             host: process.env.LAVALINK_HOST || 'localhost',
             port: parseInt(process.env.LAVALINK_PORT) || 2333,
             password: process.env.LAVALINK_PASSWORD || 'youshallnotpass',
@@ -80,9 +60,7 @@ class MusicManager {
                 if (restoredCount > 0) {
                     console.log(`\x1b[45m\x1b[37m 🔄 RESURRECT \x1b[0m \x1b[35mMemulihkan mode 24/7 di ${restoredCount} Server.\x1b[0m`);
                 }
-            } catch (e) {
-                console.error('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mGagal memulihkan sesi musik dari Database.\x1b[0m');
-            }
+            } catch (e) { }
         });
 
         this.poru.on('nodeError', (node, error) => logError(`Lavalink Error (${node.name})`, error));
@@ -112,9 +90,7 @@ class MusicManager {
                         if (!player.isPlaying && !player.isPaused) player.play();
                         return interaction.reply({ content: `Lagu **${res.tracks[0].info.title}** ditambahkan ke antrean.`, ephemeral: true });
                     }
-                } catch(e) {
-                    return interaction.reply({ content: `Terjadi kesalahan jaringan saat memuat lagu.`, ephemeral: true });
-                }
+                } catch(e) { }
             }
 
             if (interaction.isButton()) {
@@ -164,16 +140,13 @@ class MusicManager {
                     player.queue.shuffle();
                     responseMsg = `Antrean audio berhasil diacak.`;
                 }
-                else if (id === 'music_lyrics') {
-                    return interaction.reply({ content: `Gunakan perintah \`/music lyrics\` untuk melihat lirik.`, ephemeral: true });
-                }
                 else if (id === 'music_autoplay') {
                     player.autoplay = !player.autoplay;
                     responseMsg = `Autoplay ${player.autoplay ? 'Diaktifkan' : 'Dinonaktifkan'}.`;
                 }
                 else if (id === 'music_247') {
                     player.is247 = !player.is247;
-                    responseMsg = `Mode 24/7 ${player.is247 ? 'Diaktifkan' : 'Dinonaktifkan'}.`;
+                    responseMsg = `ModeSiaga 24/7 ${player.is247 ? 'Diaktifkan' : 'Dinonaktifkan'}.`;
 
                     try {
                         const [guildData] = await GuildSettings.findOrCreate({ where: { guildId: interaction.guildId } });
@@ -199,6 +172,7 @@ class MusicManager {
                             })
                         );
                     });
+                    // Jangan edit attachment, hanya edit tombolnya saja
                     await message.edit({ components: components }).catch(()=>{});
                 }
 
@@ -207,7 +181,7 @@ class MusicManager {
         });
 
         // ==========================================
-        // 🎨 UI PANEL NOW PLAYING
+        // 🎨 UI PANEL NOW PLAYING (GAMBAR CANVAS)
         // ==========================================
         this.poru.on('trackStart', async (player, track) => {
             try {
@@ -223,55 +197,26 @@ class MusicManager {
                         userProfile.music_totalDurationMs = BigInt(userProfile.music_totalDurationMs || 0) + BigInt(track.info.length || 0);
                         userProfile.music_lastListened = track.info.title.substring(0, 100);
                         await userProfile.save();
-                    } catch (e) {
-                        console.error('Gagal memperbarui Music Profile:', e);
-                    }
+                    } catch (e) { }
                 }
 
-                player.playedHistory = player.playedHistory || [];
-                if (!player.playedHistory.includes(track.info.identifier)) {
-                    player.playedHistory.push(track.info.identifier);
-                }
-                if (player.playedHistory.length > 30) player.playedHistory.shift();
+                // Matikan interval lama jika ada
+                if (player.panelUpdateInterval) clearInterval(player.panelUpdateInterval);
 
                 const channel = this.client.channels.cache.get(player.textChannel);
                 if (!channel) return;
 
-                player.autoplay = player.autoplay || false;
-                
-                if (player.is247 === undefined) {
-                    const dbSettings = await GuildSettings.findOne({ where: { guildId: player.guildId } });
-                    player.is247 = dbSettings?.music?.twentyFourSeven || false;
-                }
-                
-                if (player.panelUpdateInterval) clearInterval(player.panelUpdateInterval);
-
-                const buildEmbed = (currentPos) => {
-                    const progressBar = createProgressBar(currentPos, track.info.length);
-                    const thumbnailUrl = `https://img.youtube.com/vi/${track.info.identifier}/maxresdefault.jpg`;
-                    
-                    // Standarisasi pemanggilan warna (mendukung ui.js lama maupun baru)
-                    const embedColor = ui.getColor ? ui.getColor('primary') : (ui.colors?.primary || '#00FFFF');
-                    const titleEmoji = ui.getEmoji ? ui.getEmoji('musicPlayPause') : '▶️';
-                    const volEmoji = ui.getEmoji ? ui.getEmoji('musicVolUp') : '🔊';
-
-                    const embed = new EmbedBuilder()
-                        .setColor(embedColor) 
-                        .setAuthor({ name: 'Naura Audio System', iconURL: this.client.user.displayAvatarURL() })
-                        .setTitle(`${titleEmoji} ${track.info.title}`)
-                        .setURL(track.info.uri)
-                        .setDescription(progressBar)
-                        .setThumbnail(thumbnailUrl)
-                        .addFields(
-                            { name: 'Author', value: track.info.author, inline: true },
-                            { name: 'Requester', value: track.info.requester ? `<@${track.info.requester.id}>` : `Auto-Play`, inline: true },
-                            { name: 'Volume', value: `${player.volume}%`, inline: true }
-                        )
-                        .setFooter({ text: 'Naura Hoshino v1.0.0' });
-                        
-                    return embed;
+                // 1. Generate Gambar Panel Sesi Audio (Koneksi Ditolak) menggunakan Canvas
+                const renderPanel = async (pos) => {
+                    const imageBuffer = await generateMusicPanelImage(
+                        track, 
+                        pos, 
+                        this.client.user.displayAvatarURL({ extension: 'png' })
+                    );
+                    return new AttachmentBuilder(imageBuffer, { name: 'naura-audio-panel.png' });
                 };
 
+                // 2. Buat Rekomendasi Menu Dropdown
                 let recommendedTracks = [];
                 try {
                     const searchRes = await this.poru.resolve({ query: `https://www.youtube.com/watch?v=${track.info.identifier}&list=RD${track.info.identifier}`, source: 'youtube', requester: this.client.user });
@@ -280,68 +225,53 @@ class MusicManager {
                     }
                 } catch (e) {}
 
-                const components = [];
+                // 3. Buat Tombol-tombol Kontrol Simpel
+                const fallbackGetUIEmoji = (name, fallback) => ui.getEmoji ? ui.getEmoji(name) : fallback;
 
-                if (recommendedTracks.length > 0) {
-                    components.push(new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder()
-                            .setCustomId('music_recommendation')
-                            .setPlaceholder('Rekomendasi Antrean Berikutnya')
-                            .addOptions(recommendedTracks.map(t => ({
-                                label: t.info.title.substring(0, 95),
-                                description: t.info.author.substring(0, 40),
-                                value: t.info.identifier,
-                                emoji: ui.getEmoji ? ui.getEmoji('musicAutoplay') : '🎶'
-                            })))
-                    ));
-                }
+                const rowDropdown = recommendedTracks.length > 0 ? new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId('music_recommendation')
+                        .setPlaceholder('📻 Rekomendasi Trek Audio Berikutnya')
+                        .addOptions(recommendedTracks.map(t => ({
+                            label: t.info.title.substring(0, 95),
+                            description: t.info.author.substring(0, 40),
+                            value: t.info.identifier,
+                            emoji: '🎶'
+                        })))
+                ) : null;
 
-                // Fallback Emoji jika ui.getEmoji tidak tersedia
-                const getUIEmoji = (name, fallback) => ui.getEmoji ? ui.getEmoji(name) : fallback;
+                const rowButtons1 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('music_voldown').setEmoji(fallbackGetUIEmoji('musicVolDown', '🔉')).setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('music_pause').setEmoji(fallbackGetUIEmoji('musicPlayPause', '⏯️')).setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('music_skip').setEmoji(fallbackGetUIEmoji('musicSkip', '⏭️')).setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('music_loop').setEmoji(fallbackGetUIEmoji('musicLoop', '🔁')).setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('music_volup').setEmoji(fallbackGetUIEmoji('musicVolUp', '🔊')).setStyle(ButtonStyle.Secondary)
+                );
 
-                components.push(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('music_voldown').setEmoji(getUIEmoji('musicVolDown', '🔉')).setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_pause').setEmoji(getUIEmoji('musicPlayPause', '⏯️')).setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_skip').setEmoji(getUIEmoji('musicSkip', '⏭️')).setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_loop').setEmoji(getUIEmoji('musicLoop', '🔁')).setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_volup').setEmoji(getUIEmoji('musicVolUp', '🔊')).setStyle(ButtonStyle.Secondary)
-                ));
+                const rowButtons2 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('music_autoplay').setEmoji(fallbackGetUIEmoji('musicAutoplay', '📻')).setStyle(player.autoplay ? ButtonStyle.Primary : ButtonStyle.Secondary), 
+                    new ButtonBuilder().setCustomId('music_lyrics').setEmoji(fallbackGetUIEmoji('musicLyrics', '📝')).setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('music_stop').setEmoji(fallbackGetUIEmoji('musicStop', '⏹️')).setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('music_shuffle').setEmoji(fallbackGetUIEmoji('musicShuffle', '🔀')).setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('music_247').setEmoji(fallbackGetUIEmoji('music247', '🛡️')).setStyle(player.is247 ? ButtonStyle.Primary : ButtonStyle.Secondary) 
+                );
 
-                components.push(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('music_autoplay')
-                        .setEmoji(getUIEmoji('musicAutoplay', '📻'))
-                        .setStyle(player.autoplay ? ButtonStyle.Primary : ButtonStyle.Secondary), 
-                    
-                    new ButtonBuilder()
-                        .setCustomId('music_lyrics')
-                        .setEmoji(getUIEmoji('musicLyrics', '📝'))
-                        .setStyle(ButtonStyle.Success),
-                    
-                    new ButtonBuilder()
-                        .setCustomId('music_stop')
-                        .setEmoji(getUIEmoji('musicStop', '⏹️'))
-                        .setStyle(ButtonStyle.Danger),
-                    
-                    new ButtonBuilder()
-                        .setCustomId('music_shuffle')
-                        .setEmoji(getUIEmoji('musicShuffle', '🔀'))
-                        .setStyle(ButtonStyle.Secondary),
-                    
-                    new ButtonBuilder()
-                        .setCustomId('music_247')
-                        .setEmoji(getUIEmoji('music247', '🛡️'))
-                        .setStyle(player.is247 ? ButtonStyle.Primary : ButtonStyle.Secondary) 
-                ));
+                const components = [rowButtons1, rowButtons2];
+                if (rowDropdown) components.unshift(rowDropdown);
 
-                const message = await channel.send({ embeds: [buildEmbed(0)], components: components });
+                // 4. Kirim Gambar Panel Pertama
+                const firstAttachment = await renderPanel(0);
+                const message = await channel.send({ files: [firstAttachment], components: components });
                 
+                // Menghapus panel lama
                 if (player.nowPlayingMessage) {
                     const oldMessage = await channel.messages.fetch(player.nowPlayingMessage).catch(() => null);
                     if (oldMessage) await oldMessage.delete().catch(() => {});
                 }
                 player.nowPlayingMessage = message.id;
 
+                // 5. SISTEM UPDATE LOOP (15 Detik): Merender Ulang Gambar
+                // Kita tidak mengedit embed, tapi mengedit komponen dengan mengirim ulang file gambar.
                 player.panelUpdateInterval = setInterval(async () => {
                     if (!player || player.state === 'DISCONNECTED') {
                         clearInterval(player.panelUpdateInterval);
@@ -350,7 +280,10 @@ class MusicManager {
                     if (player.isPaused) return;
 
                     try {
-                        await message.edit({ embeds: [buildEmbed(player.position)] });
+                        const newAttachment = await renderPanel(player.position);
+                        
+                        // Cara mengupdate file gambar di message.edit (mengirim ulang attachment)
+                        await message.edit({ files: [newAttachment] }).catch(()=>{});
                     } catch (err) {
                         if (err.code === 10008) clearInterval(player.panelUpdateInterval);
                     }
@@ -359,19 +292,8 @@ class MusicManager {
             } catch (error) { logError('Poru TrackStart Error', error); }
         });
 
-        this.poru.on('trackError', (player, track, error) => {
-            console.log(`\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mAkses trek diblokir: ${track?.info?.title}\x1b[0m`);
-            if (player.panelUpdateInterval) clearInterval(player.panelUpdateInterval);
-            player.autoplayErrorCount = (player.autoplayErrorCount || 0) + 1;
-        });
-        
-        this.poru.on('trackStuck', (player) => {
-            if (player.panelUpdateInterval) clearInterval(player.panelUpdateInterval);
-            player.autoplayErrorCount = (player.autoplayErrorCount || 0) + 1;
-        });
-
         // ==========================================
-        // 🛑 EVENT: SISTEM AUTOPLAY ANTI-SPAM
+        // 🛑 EVENT: SISTEM AUTOPLAY & END SESSION
         // ==========================================
         this.poru.on('queueEnd', async (player) => {
             try {
@@ -382,9 +304,6 @@ class MusicManager {
                     if (player.isResolvingAutoplay) return; 
                     if (player.autoplayErrorCount >= 3) {
                         player.autoplay = false; 
-                        if (channel) {
-                            channel.send({ embeds: [new EmbedBuilder().setColor('#FF0000').setDescription(`Sistem Autoplay dinonaktifkan akibat terlalu banyak kesalahan pemuatan trek.`)] });
-                        }
                     } else {
                         player.isResolvingAutoplay = true;
                         
@@ -430,11 +349,11 @@ class MusicManager {
                     }
 
                     const is247 = player.is247 || false;
-                    const embedColor = ui.getColor ? ui.getColor('kythiaDark') : '#2b2d31';
+                    const endColor = is247 ? '#00FFFF' : ui.getColor ? ui.getColor('kythiaDark') : '#2b2d31';
                     
                     const embed = new EmbedBuilder()
-                        .setColor(embedColor)
-                        .setDescription(is247 ? `Antrean selesai. Naura siaga (Mode 24/7).` : `Antrean selesai. Memutuskan koneksi audio.`);
+                        .setColor(endColor)
+                        .setDescription(is247 ? `Antrean selesai. Naura Intelligence siaga 24/7.` : `Antrean musik selesai. Memutuskan sesi audio.`);
                     await channel.send({ embeds: [embed] });
                 }
                 
