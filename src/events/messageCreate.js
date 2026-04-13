@@ -13,15 +13,10 @@ const badWords = ['anjing', 'bangsat', 'kontol', 'babi'];
 const linkRegex = /(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/gi;
 
 module.exports = async (client, message) => {
-    // Abaikan pesan dari bot
     if (message.author.bot) return;
 
-    // Pastikan Snipe Collection tersedia (Fitur Meekly)
     if (!client.snipes) client.snipes = new Collection();
 
-    // ==========================================
-    // 📩 FITUR 1: MODMAIL (DM KE BOT)
-    // ==========================================
     if (message.channel.type === ChannelType.DM) {
         const staffGuild = client.guilds.cache.get(env.STAFF_GUILD);
         if (!staffGuild) return message.reply('❌ Sistem ModMail sedang offline.');
@@ -70,9 +65,6 @@ module.exports = async (client, message) => {
         return; 
     }
 
-    // ==========================================
-    // 📤 FITUR 2: MODMAIL (STAFF MEMBALAS KE DM)
-    // ==========================================
     let thread = null;
     try { thread = await ModMail.findOne({ where: { channelId: message.channel.id, closed: false } }); } catch(e){}
     
@@ -109,17 +101,11 @@ module.exports = async (client, message) => {
         return; 
     }
 
-    // ==========================================
-    // ⚙️ DEKLARASI PENGATURAN DATABASE (TUNGGAL ANTI CRASH)
-    // ==========================================
     let settings = null;
     if (message.guild) {
         try { [settings] = await GuildSettings.findOrCreate({ where: { guildId: message.guild.id } }); } catch(e){}
     }
 
-    // ==========================================
-    // 🛡️ FITUR 3: ADVANCED AUTOMOD
-    // ==========================================
     if (settings && message.guild && message.member && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         const automod = settings?.settings?.automod || {};
         let isViolation = false;
@@ -149,9 +135,6 @@ module.exports = async (client, message) => {
         }
     }
 
-    // ==========================================
-    // 💤 FITUR 4: AFK SYSTEM
-    // ==========================================
     if (message.mentions.users.size > 0) {
         const mentioned = message.mentions.users.first();
         const profile = await UserProfile.findByPk(mentioned.id).catch(()=>null);
@@ -171,9 +154,6 @@ module.exports = async (client, message) => {
             .then(m => setTimeout(() => m.delete().catch(()=>null), 5000));
     }
 
-    // ==========================================
-    // 🤖 FITUR 6: CHATBOT AI & LAINNYA
-    // ==========================================
     const isMentioned = message.mentions.has(client.user);
     let isReplyToBot = false;
     let previousBotMessage = '';
@@ -206,9 +186,6 @@ module.exports = async (client, message) => {
         }
     }
 
-    // ==========================================
-    // ⚡ FITUR 8: HYBRID PREFIX HANDLER (ANTI BUG)
-    // ==========================================
     const prefix = env.PREFIX || 'n!';
     if (!message.content.startsWith(prefix)) return;
 
@@ -232,11 +209,9 @@ module.exports = async (client, message) => {
             channel: message.channel,
             client: client,
             options: {
-                // FUNGSI INI WAJIB UNTUK COMMAND ECONOMY
                 getSubcommand: () => args[0]?.toLowerCase() || null, 
                 getString: (name) => {
                     let tempArgs = [...args];
-                    // Buang argumen pertama jika itu adalah subcommand (misal: "shop" dari "n!economy shop market")
                     if (tempArgs.length > 0 && ['balance', 'inventory', 'shop', 'buy', 'daily', 'weekly', 'work', 'lootbox', 'race', 'hack', 'steal'].includes(tempArgs[0].toLowerCase())) {
                         tempArgs.shift(); 
                     }
@@ -268,9 +243,14 @@ module.exports = async (client, message) => {
             deleteReply: async () => {}, 
         };
 
+        // PERBAIKAN: Routing yang benar untuk Prefix Commands Murni VS Slash/Hybrid Commands
         if (typeof command.executePrefix === 'function') {
             await command.executePrefix(message, args, client);
+        } else if (!command.data && typeof command.execute === 'function') {
+            // Jalur khusus untuk Prefix Commands murni (seperti setup-ticket.js / addpremium.js)
+            await command.execute(client, message, args);
         } else {
+            // Jalur untuk Hybrid Slash Commands
             await command.execute(mockInteraction);
         }
 
