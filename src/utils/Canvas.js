@@ -1,4 +1,4 @@
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas, loadImage } = require('@napi-rs/canvas'); // Menggunakan mesin baru
 const { AttachmentBuilder } = require('discord.js');
 const path = require('path');
 
