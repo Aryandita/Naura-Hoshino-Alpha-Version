@@ -37,10 +37,11 @@ function logError(type, error) {
         // Menulis langsung ke file baru! (writeFileSync = membuat file baru / menimpa)
         fs.writeFileSync(filePath, logEntry, 'utf8');
         
-        // Memberi tahu di console bahwa file log sudah terbuat
-        console.log(`\x1b[33m[📁 LOGGER]\x1b[0m Error telah dicatat dengan rapi di: \x1b[36mlogs/${fileName}\x1b[0m`);
+        // FORMAT BARU: Log File Creation (Hijau)
+        console.log(`\x1b[42m\x1b[30m 📁 LOGGER \x1b[0m \x1b[32mError telah dicatat dengan rapi di: logs/${fileName}\x1b[0m`);
     } catch (e) {
-        console.error('\x1b[31m[🚨 LOGGER FATAL]\x1b[0m Gagal menulis ke sistem file log:', e);
+        // FORMAT BARU: Log Fatal Error (Merah)
+        console.error('\x1b[41m\x1b[37m 💥 LOGGER FATAL \x1b[0m \x1b[31mGagal menulis ke sistem file log:\x1b[0m', e);
     }
 }
 
