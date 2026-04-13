@@ -8,42 +8,33 @@ class RssManager {
         this.client = client;
     }
 
-    // Fungsi untuk menyalakan mesin (Berputar setiap 10 menit)
     init() {
         console.log('\x1b[35m[📡 RSS ALERT]\x1b[0m Mesin Notifikasi Sosial Media diaktifkan.');
         
-        // Cek langsung saat bot menyala
         this.checkAllFeeds();
-
-        // Ulangi pengecekan setiap 10 menit (600.000 milidetik)
         setInterval(() => this.checkAllFeeds(), 600000); 
     }
 
     async checkAllFeeds() {
         try {
-            const alerts = await SocialAlert.find();
+            // PERBAIKAN: Menggunakan findAll() khas Sequelize MySQL
+            const alerts = await SocialAlert.findAll();
             if (alerts.length === 0) return;
 
             for (const alert of alerts) {
                 try {
-                    // Tarik data terbaru dari platform target
                     const feed = await parser.parseURL(alert.feedUrl);
                     if (!feed.items || feed.items.length === 0) continue;
 
-                    const latestPost = feed.items[0]; // Ambil postingan paling atas (terbaru)
+                    const latestPost = feed.items[0];
 
-                    // Jika link postingan terbaru BERBEDA dengan yang diingat database = ADA POST BARU!
                     if (alert.lastPostLink !== latestPost.link) {
-                        
-                        // Perbarui ingatan database agar tidak spam
                         alert.lastPostLink = latestPost.link;
-                        await alert.save();
+                        await alert.save(); // Menyimpan ke MySQL
 
-                        // Cari channel Discord tempat mengirim notifikasi
                         const channel = this.client.channels.cache.get(alert.discordChannelId);
                         if (!channel) continue;
 
-                        // Rangkai pesan pengumuman
                         let icon = '📢';
                         if (alert.platform === 'youtube') icon = '🔴';
                         else if (alert.platform === 'tiktok') icon = '🎵';
@@ -52,9 +43,7 @@ class RssManager {
 
                         await channel.send(message);
                     }
-                } catch (feedError) {
-                    // Abaikan jika satu feed gagal (mungkin API sedang down), lanjut ke feed berikutnya
-                }
+                } catch (feedError) {}
             }
         } catch (error) {
             logError('RSS Manager Fatal Error', error);
