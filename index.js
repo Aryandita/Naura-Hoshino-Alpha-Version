@@ -9,12 +9,9 @@ const MusicManager = require('./src/managers/musicManager');
 const redisManager = require('./src/managers/redisManager');
 const { logError } = require('./src/managers/logger'); 
 const RssManager = require('./src/managers/rssManager');
-const { connectToDatabase } = require('./src/managers/dbManager'); // Memanggil MySQL
+const { connectToDatabase } = require('./src/managers/dbManager'); 
 const env = require('./src/config/env'); 
 
-// ==========================================
-// 🤖 1. INISIALISASI CLIENT DISCORD
-// ==========================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -51,7 +48,7 @@ const sendErrorLog = async (err, type) => {
                 await owner.send({ embeds: [errEmbed] }).catch(() => {});
             }
         } catch (e) {
-            console.error('Gagal mengirim log error ke Developer:', e);
+            console.error('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mGagal mengirim log error ke DM Developer.\x1b[0m', e);
         }
     }
 };
@@ -117,14 +114,13 @@ async function startBot() {
     try {
         process.stdout.write('\x1b[43m\x1b[30m ⏳ API \x1b[0m \x1b[33mSinkronisasi Slash Commands ke Discord...\x1b[0m ');
         await syncCommandsToDiscord()
-            .then(count => console.log(`\x1b[42m\x1b[30m OK \x1b[0m \x1b[32m(${count} cmds)\x1b[0m`))
-            .catch(err => console.log(`\x1b[41m\x1b[37m GAGAL \x1b[0m \x1b[31m${err.message}\x1b[0m`));
+            .then(count => console.log(`\x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32m(${count} Commands)\x1b[0m`))
+            .catch(err => console.log(`\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31m${err.message}\x1b[0m`));
 
         const commandPath = path.join(__dirname, 'src', 'commands');
         const commandHandler = new CommandHandler(client, commandPath);
         await commandHandler.load();
 
-        // Menyambungkan ke MySQL Database secara langsung
         try {
             await connectToDatabase();
             sysStatus.db = '\x1b[32m🟢 CONNECTED \x1b[0m';
@@ -141,18 +137,15 @@ async function startBot() {
             if (client.musicManager.initialize) client.musicManager.initialize();
             if (client.rssManager.init) client.rssManager.init(); 
 
-            // Kalkulasi Hardware
             const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
             const usedRam = ((os.totalmem() - os.freemem()) / 1024 / 1024 / 1024).toFixed(2);
             
-            // Format string agar tabel ASCII tetap sejajar sempurna
             const cpuStr = os.cpus()[0].model.trim().substring(0, 48).padEnd(49);
             const ramStr = `${usedRam} GB / ${totalRam} GB`.padEnd(49);
             const platStr = `${os.platform()} ${os.arch()}`.substring(0, 48).padEnd(49);
             const tagStr = client.user.tag.padEnd(49);
             const ownerStr = 'Developer Aryan / Ryaa'.padEnd(49);
             
-            // Format ping agar lebar kolom tetap pas (Max 14 char)
             let pingText = `🟢 ONLINE (${client.ws.ping}ms)`;
             if (pingText.length < 18) pingText = pingText.padEnd(18);
 
