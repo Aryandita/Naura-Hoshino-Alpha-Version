@@ -28,7 +28,9 @@ const GuildSettings = sequelize.define('GuildSettings', {
             stickyMessage: { channelId: null, message: null },
             announcementChannel: null,
             autoRole: null,
-            autoReplies: []
+            autoReplies: [],
+            antinuke: { enabled: false, actions: ['kick'], whitelist: [] },
+            automod: { antiInvite: false, antiCaps: false, massMention: 5, antiSpam: true }
         }
     },
 
