@@ -1,4 +1,4 @@
-const { createCanvas, loadImage, registerFont } = require('canvas');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas'); // Menggunakan mesin baru
 const axios = require('axios');
 const path = require('path');
 
@@ -13,8 +13,8 @@ const COLOR_TEXT_SUB = '#C0C0C0'; // Perak/Abu terang
 // Path ke gambar tekstur background Anda. SESUAIKAN JIKA PERLU.
 const BG_TEXTUR_PATH = path.join(__dirname, '../../assets/bg_rank.png');
 
-// (Opsional) Daftarkan font custom jika Anda punya
-// registerFont(path.join(__dirname, '../assets/fonts/Poppins-Bold.ttf'), { family: 'PoppinsBold' });
+// (Opsional) Daftarkan font custom menggunakan GlobalFonts dari @napi-rs/canvas
+// GlobalFonts.registerFromPath(path.join(__dirname, '../assets/fonts/Poppins-Bold.ttf'), 'PoppinsBold');
 const FONT_MAIN = 'sans-serif'; // Ganti dengan 'PoppinsBold' jika ada
 
 /**
@@ -193,14 +193,13 @@ async function generateRankCard(user, level, currentXp, requiredXp, rank, roleBa
     // Teks XP & Persentase (Dibawah Bar, Perak)
     ctx.fillStyle = COLOR_TEXT_SUB;
     ctx.font = `22px ${FONT_MAIN}`;
-	const xpText = `${Math.floor(currentXp).toLocaleString()} / ${Math.floor(requiredXp).toLocaleString()} KEKUATAN`;
+    const xpText = `${Math.floor(currentXp).toLocaleString()} / ${Math.floor(requiredXp).toLocaleString()} KEKUATAN`;
     ctx.fillText(xpText, barX, barY + barHeight + 28);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = COLOR_GOLD;
     ctx.font = `bold 22px ${FONT_MAIN}`;
     ctx.fillText(`${Math.floor(percentage)}%`, barX + barWidth, barY + barHeight + 28);
-
 
     // 6. Mengubah Canvas menjadi Buffer (Data Gambar)
     return canvas.toBuffer('image/png');
