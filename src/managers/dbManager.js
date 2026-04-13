@@ -10,7 +10,7 @@ const sequelize = new Sequelize(
         port: env.DB_PORT,
         dialect: 'mysql',
         logging: false, 
-        pool: { max: 5, min: 0, acquire: 30000, idle: 10000 } // Membuat koneksi lebih stabil
+        pool: { max: 5, min: 0, acquire: 30000, idle: 10000 } // Membuat koneksi stabil & tidak mudah putus
     }
 );
 
@@ -22,7 +22,7 @@ const connectToDatabase = async () => {
         await sequelize.sync({ alter: true });
         console.log('\x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32mTabel MySQL berhasil disinkronisasi.\x1b[0m');
     } catch (error) {
-        // Tampilkan error, tapi JANGAN matikan bot (Hapus throw error;)
+        // Log merah tanpa throw error agar bot TIDAK crash meskipun panel Halix menolak koneksi
         console.error('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mGagal terhubung ke MySQL: Koneksi Ditolak (Refused).\x1b[0m');
     }
 };
