@@ -1,198 +1,104 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-// Menyiapkan path untuk file config mandiri
-const configPath = path.join(__dirname, '../../config.json');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const GuildSettings = require('../../models/GuildSettings');
+const ui = require('../../config/ui');
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('setup')
-    .setDescription('⚙️ Setup otomatis sistem server.')
-    // ==========================================
-    // 🔒 PENGAMANAN: HANYA ADMIN YANG BISA PAKAI
-    // ==========================================
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) 
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('tempvoice')
-        .setDescription('🎧 Buat kategori dan channel otomatis untuk sistem Tempvoice.'))
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('ticket')
-        .setDescription('🎫 Buat kategori, role staf, dan channel log otomatis untuk sistem Tiket.'))
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('minecraft')
-        .setDescription('🎮 Buat channel panel otomatis untuk status server Minecraft.')
-        .addStringOption(option => 
-            option.setName('ip')
-            .setDescription('Alamat IP Server Minecraft')
-            .setRequired(true))
-        .addIntegerOption(option => 
-            option.setName('port')
-            .setDescription('Port Server (Opsional, Default: 25565)')
-            .setRequired(false))
-    ),
+    data: new SlashCommandBuilder()
+        .setName('setup')
+        .setDescription('Pusat Pengaturan Sistem Naura')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        // SUBCOMMAND: TICKET
+        .addSubcommand(sub => sub
+            .setName('ticket')
+            .setDescription('Setup Sistem Tiket')
+            .addChannelOption(opt => opt.setName('kategori').setDescription('Kategori tempat tiket dibuat').addChannelTypes(ChannelType.GuildCategory).setRequired(true))
+            .addChannelOption(opt => opt.setName('log').setDescription('Channel untuk transkrip & log tiket').addChannelTypes(ChannelType.GuildText).setRequired(true))
+            .addRoleOption(opt => opt.setName('admin_role').setDescription('Role yang bisa melihat tiket').setRequired(true))
+        )
+        // SUBCOMMAND: TEMPVOICE
+        .addSubcommand(sub => sub
+            .setName('tempvoice')
+            .setDescription('Setup Sistem Voice Channel Sementara')
+            .addChannelOption(opt => opt.setName('trigger').setDescription('Voice Channel untuk "Join to Create"').addChannelTypes(ChannelType.GuildVoice).setRequired(true))
+            .addChannelOption(opt => opt.setName('kategori').setDescription('Kategori tempat Room dibuat').addChannelTypes(ChannelType.GuildCategory).setRequired(true))
+            .addBooleanOption(opt => opt.setName('status').setDescription('Aktifkan fitur ini?').setRequired(true))
+        )
+        // SUBCOMMAND: AUTOMOD
+        .addSubcommand(sub => sub
+            .setName('automod')
+            .setDescription('Setup Keamanan Otomatis')
+            .addBooleanOption(opt => opt.setName('anti_invite').setDescription('Blokir link undangan server lain?').setRequired(true))
+            .addBooleanOption(opt => opt.setName('anti_caps').setDescription('Hapus pesan dengan huruf kapital berlebih?').setRequired(true))
+            .addIntegerOption(opt => opt.setName('mass_mention').setDescription('Batas maksimal mention dalam satu pesan (Default: 5)').setRequired(false))
+        ),
 
-  async execute(interaction) {
-    // Tampilkan loading karena bot butuh waktu untuk membuat banyak channel/role
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    async execute(interaction) {
+        const sub = interaction.options.getSubcommand();
+        const guildId = interaction.guild.id;
 
-    const subcommand = interaction.options.getSubcommand();
-    const guild = interaction.guild;
+        // Ambil data dari MySQL (atau buat jika belum ada)
+        const [guildData] = await GuildSettings.findOrCreate({ where: { guildId } });
+        let currentSettings = guildData.settings || {};
 
-    // Memuat atau membuat config.json baru
-    let config = { tempvoice: {}, ticket: {}, minecraft: {} };
-    if (fs.existsSync(configPath)) {
-        try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
+        const successEmbed = new EmbedBuilder()
+            .setColor(ui.getColor('primary')) // Warna Aqua khas Aryan
+            .setTimestamp()
+            .setFooter({ text: 'Sistem Konfigurasi Naura Versi 1.0.0' });
+
+        // --- LOGIKA SETUP TICKET ---
+        if (sub === 'ticket') {
+            const category = interaction.options.getChannel('kategori');
+            const log = interaction.options.getChannel('log');
+            const role = interaction.options.getRole('admin_role');
+
+            currentSettings.ticket = {
+                categoryId: category.id,
+                logChannelId: log.id,
+                roleAdminId: role.id
+            };
+
+            successEmbed.setTitle('🎫 Setup Tiket Berhasil')
+                .setDescription(`Sistem tiket telah dikonfigurasi dan disimpan ke Database.\n\n${ui.getEmoji('progressDot')} **Kategori:** ${category.name}\n${ui.getEmoji('progressDot')} **Log Channel:** <#${log.id}>\n${ui.getEmoji('progressDot')} **Support Role:** <@&${role.id}>`);
+        }
+
+        // --- LOGIKA SETUP TEMPVOICE ---
+        if (sub === 'tempvoice') {
+            const trigger = interaction.options.getChannel('trigger');
+            const category = interaction.options.getChannel('kategori');
+            const status = interaction.options.getBoolean('status');
+
+            currentSettings.tempVoice = {
+                triggerChannelId: trigger.id,
+                categoryId: category.id,
+                enabled: status
+            };
+
+            successEmbed.setTitle('🔊 Setup TempVoice Berhasil')
+                .setDescription(`Konfigurasi Voice Channel sementara telah diperbarui.\n\n${ui.getEmoji('progressDot')} **Trigger Channel:** ${trigger.name}\n${ui.getEmoji('progressDot')} **Category:** ${category.name}\n${ui.getEmoji('progressDot')} **Status:** ${status ? 'AKTIF' : 'NONAKTIF'}`);
+        }
+
+        // --- LOGIKA SETUP AUTOMOD ---
+        if (sub === 'automod') {
+            const invite = interaction.options.getBoolean('anti_invite');
+            const caps = interaction.options.getBoolean('anti_caps');
+            const mention = interaction.options.getInteger('mass_mention') || 5;
+
+            currentSettings.automod = {
+                antiInvite: invite,
+                antiCaps: caps,
+                massMention: mention,
+                enabled: true
+            };
+
+            successEmbed.setTitle('🛡️ Setup Automod Berhasil')
+                .setDescription(`Sistem keamanan otomatis Naura telah diperbarui.\n\n${ui.getEmoji('progressDot')} **Anti-Invite:** ${invite ? 'ON' : 'OFF'}\n${ui.getEmoji('progressDot')} **Anti-Caps:** ${caps ? 'ON' : 'OFF'}\n${ui.getEmoji('progressDot')} **Mass Mention Limit:** ${mention}`);
+        }
+
+        // SIMPAN KE MYSQL
+        guildData.settings = currentSettings;
+        guildData.changed('settings', true); // Memberitahu Sequelize bahwa JSON telah berubah
+        await guildData.save();
+
+        await interaction.reply({ embeds: [successEmbed] });
     }
-
-    // ==========================================
-    // 🎧 AUTO SETUP TEMPVOICE
-    // ==========================================
-    if (subcommand === 'tempvoice') {
-      try {
-        // 1. Buat Kategori
-        const category = await guild.channels.create({
-            name: '🎧 TEMPVOICE SYSTEM',
-            type: ChannelType.GuildCategory,
-        });
-
-        // 2. Buat Channel Suara Pemicu (Join to Create)
-        const triggerChannel = await guild.channels.create({
-            name: '➕ Join to Create',
-            type: ChannelType.GuildVoice,
-            parent: category.id,
-        });
-
-        // 3. Simpan ID ke Config
-        config.tempvoice.enabled = true;
-        config.tempvoice.triggerChannelId = triggerChannel.id;
-        config.tempvoice.categoryId = category.id;
-        config.tempvoice.panelEmbedColor = '#D8A8FB';
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-        return interaction.editReply({ content: `✅ **Setup Tempvoice Selesai!**\nBot telah membuat Kategori <#${category.id}> dan Channel <#${triggerChannel.id}> secara otomatis.`, flags: MessageFlags.Ephemeral });
-      } catch (error) {
-        console.error(error);
-        return interaction.editReply({ content: '❌ Gagal melakukan setup. Pastikan bot memiliki izin "Manage Channels".', ephemeral: true });
-      }
-    } 
-    
-    // ==========================================
-    // 🎫 AUTO SETUP TIKET
-    // ==========================================
-    else if (subcommand === 'ticket') {
-      try {
-        // 1. Buat Role Admin Tiket
-        const adminRole = await guild.roles.create({
-            name: '🎟️ Ticket Staff',
-            color: FDBB44,
-            reason: 'Role otomatis untuk mengurus sistem tiket',
-        });
-
-        // 2. Buat Kategori Tiket
-        const category = await guild.channels.create({
-            name: '🎫 TICKET SYSTEM',
-            type: ChannelType.GuildCategory,
-        });
-
-        // 3. Buat Channel Log (Disembunyikan dari publik)
-        const logChannel = await guild.channels.create({
-            name: 'log-transkrip',
-            type: ChannelType.GuildText,
-            parent: category.id,
-            permissionOverwrites: [
-                { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }, // Sembunyikan dari @everyone
-                { id: adminRole.id, allow: [PermissionFlagsBits.ViewChannel] } // Tampilkan untuk Staff
-            ]
-        });
-
-        // 4. Buat Channel untuk Panel Buka Tiket
-        const panelChannel = await guild.channels.create({
-            name: 'buka-tiket',
-            type: ChannelType.GuildText,
-            parent: category.id,
-            permissionOverwrites: [
-                { id: guild.id, deny: [PermissionFlagsBits.SendMessages], allow: [PermissionFlagsBits.ViewChannel] } // Publik tidak bisa chat
-            ]
-        });
-
-        // 5. Simpan ID ke Config
-        config.ticket.enabled = true;
-        config.ticket.categoryId = category.id;
-        config.ticket.logChannelId = logChannel.id;
-        config.ticket.roleAdminId = adminRole.id;
-        config.ticket.panelEmbedColor = '#FDBB44';
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-        // 6. Kirim Panel UI ke Channel Buka Tiket
-        const panelEmbed = new EmbedBuilder()
-            .setColor('#FDBB44')
-            .setAuthor({ name: '✦ P U S A T  B A N T U A N ✦', iconURL: interaction.client.user.displayAvatarURL() })
-            .setTitle('Buka Tiket Dukungan')
-            .setDescription(`Silakan tekan tombol di bawah ini untuk membuka tiket baru dan menghubungi staf kami.\n\nJangan membuat tiket palsu atau spam.`);
-
-        const openTicketButton = new ButtonBuilder()
-            .setCustomId('ticket_open')
-            .setLabel('Buka Tiket 📧')
-            .setStyle(ButtonStyle.Primary);
-
-        const row = new ActionRowBuilder().addComponents(openTicketButton);
-        await panelChannel.send({ embeds: [panelEmbed], components: [row] });
-
-        return interaction.editReply({ content: `✅ **Setup Tiket Selesai!**\nBot telah membuat Kategori, Role <@&${adminRole.id}>, Channel Panel <#${panelChannel.id}>, dan Channel Log secara otomatis.`, flags: MessageFlags.Ephemeral });
-      } catch (error) {
-        console.error(error);
-        return interaction.editReply({ content: '❌ Gagal melakukan setup. Pastikan bot memiliki izin "Manage Channels" dan "Manage Roles".', flags: MessageFlags.Ephemeral });
-      }
-    }
-
-    // ==========================================
-    // 🎮 AUTO SETUP MINECRAFT PANEL
-    // ==========================================
-    else if (subcommand === 'minecraft') {
-      try {
-        const ip = interaction.options.getString('ip');
-        const port = interaction.options.getInteger('port') || 25565;
-
-        // 1. Buat Channel Khusus Panel Minecraft
-        const mcChannel = await guild.channels.create({
-            name: 'status-minecraft',
-            type: ChannelType.GuildText,
-            permissionOverwrites: [
-                { id: guild.id, deny: [PermissionFlagsBits.SendMessages], allow: [PermissionFlagsBits.ViewChannel] }
-            ]
-        });
-
-        // 2. Simpan Data ke Config
-        config.minecraft.ip = ip;
-        config.minecraft.port = port;
-        config.minecraft.panelEmbedColor = '#3EFC54';
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-        // 3. Kirim Panel Awal
-        const statusEmbed = new EmbedBuilder()
-            .setColor('#3EFC54')
-            .setAuthor({ name: '✦ M I N E C R A F T  S T A T U S  ✦', iconURL: interaction.client.user.displayAvatarURL() })
-            .setTitle(`🎮 Server: ${ip}`)
-            .setDescription('Klik tombol **Perbarui** di bawah untuk memuat dan menyegarkan status server saat ini.')
-            .addFields({ name: '🌐 IP / Port', value: `\`${ip}:${port}\``, inline: true });
-
-        const refreshButton = new ButtonBuilder()
-            .setCustomId('mc_refresh')
-            .setLabel('Perbarui Status 🔄')
-            .setStyle(ButtonStyle.Secondary);
-
-        const row = new ActionRowBuilder().addComponents(refreshButton);
-        await mcChannel.send({ embeds: [statusEmbed], components: [row] });
-
-        return interaction.editReply({ content: `✅ **Setup Minecraft Selesai!**\nChannel Panel <#${mcChannel.id}> telah dibuat untuk server \`${ip}\`.`, flags: MessageFlags.Ephemeral });
-      } catch (error) {
-        console.error(error);
-        return interaction.editReply({ content: '❌ Gagal melakukan setup. Pastikan bot memiliki izin "Manage Channels".', flags: MessageFlags.Ephemeral });
-      }
-    }
-  },
 };
