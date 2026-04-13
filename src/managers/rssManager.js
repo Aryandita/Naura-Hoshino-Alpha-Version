@@ -9,7 +9,8 @@ class RssManager {
     }
 
     init() {
-        console.log('\x1b[35m[📡 RSS ALERT]\x1b[0m Mesin Notifikasi Sosial Media diaktifkan.');
+        // FORMAT BARU: Log RSS (Kuning)
+        console.log('\x1b[43m\x1b[30m 📡 RSS ALERT \x1b[0m \x1b[33mMesin Notifikasi Sosial Media diaktifkan.\x1b[0m');
         
         this.checkAllFeeds();
         setInterval(() => this.checkAllFeeds(), 600000); 
@@ -17,7 +18,6 @@ class RssManager {
 
     async checkAllFeeds() {
         try {
-            // PERBAIKAN: Menggunakan findAll() khas Sequelize MySQL
             const alerts = await SocialAlert.findAll();
             if (alerts.length === 0) return;
 
@@ -30,7 +30,7 @@ class RssManager {
 
                     if (alert.lastPostLink !== latestPost.link) {
                         alert.lastPostLink = latestPost.link;
-                        await alert.save(); // Menyimpan ke MySQL
+                        await alert.save();
 
                         const channel = this.client.channels.cache.get(alert.discordChannelId);
                         if (!channel) continue;
