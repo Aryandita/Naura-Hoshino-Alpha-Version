@@ -36,6 +36,12 @@ const UserProfile = sequelize.define('UserProfile', {
         allowNull: true 
     },
     
+    // --- MUSIC PROFILE ---
+    music_tracksListened: { type: DataTypes.INTEGER, defaultValue: 0 },
+    music_totalDurationMs: { type: DataTypes.BIGINT, defaultValue: 0 },
+    music_favoriteGenre: { type: DataTypes.STRING, defaultValue: 'Belum Terdeteksi' },
+    music_lastListened: { type: DataTypes.STRING, defaultValue: 'Belum ada lagu' },
+    
     // --- LEVELING ---
     leveling_xp: { type: DataTypes.INTEGER, defaultValue: 0 },
     leveling_level: { type: DataTypes.INTEGER, defaultValue: 1 },
