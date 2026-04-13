@@ -7,7 +7,6 @@ class CommandHandler {
   constructor(client, commandsPath) {
     this.client = client;
     this.commandsPath = commandsPath;
-    // Memastikan client.commands adalah Collection
     if (!client.commands) client.commands = new Collection();
     this.commands = client.commands;
   }
@@ -36,7 +35,7 @@ class CommandHandler {
               const cmdName = command.data.name;
 
               if (commandNames.has(cmdName)) {
-                console.log(`\x1b[33m[⚠️ WARNING]\x1b[0m Duplikat command "/\x1b[31m${cmdName}\x1b[33m" pada file \x1b[36m${file}\x1b[0m! File dilewati.`);
+                console.log(`\x1b[43m\x1b[30m ⚠️ WARNING \x1b[0m \x1b[33mDuplikat command "/${cmdName}" pada file ${file}! File dilewati.\x1b[0m`);
                 continue; 
               }
 
@@ -44,7 +43,6 @@ class CommandHandler {
               command.category = folder;
               this.commands.set(cmdName, command);
               
-              // Mendaftarkan alias agar bisa dipanggil via prefix handler
               if (command.aliases && Array.isArray(command.aliases)) {
                   command.aliases.forEach(alias => this.commands.set(alias, command));
               }
@@ -55,23 +53,23 @@ class CommandHandler {
         }
       }
 
-      console.log(`\x1b[34m[📂 COMMANDS]\x1b[0m Memuat \x1b[33m${commandsArray.length}\x1b[0m slash command.`);
+      console.log(`\x1b[44m\x1b[37m 📂 COMMANDS \x1b[0m \x1b[34mMemuat ${commandsArray.length} slash command secara lokal.\x1b[0m`);
 
       const rest = new REST({ version: '10' }).setToken(env.TOKEN);
       const clientId = env.CLIENT_ID;
       const guildId = env.GUILD_ID; 
 
-      if (!clientId) return console.log('\x1b[31m[❌ COMMANDS]\x1b[0m CLIENT_ID tidak ada di .env!');
+      if (!clientId) return console.log('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mCLIENT_ID tidak ada di .env!\x1b[0m');
 
       if (guildId) {
         await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commandsArray });
-        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses didaftarkan ke server (\x1b[33m${guildId}\x1b[0m).`);
+        console.log(`\x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32mCommand berhasil diregistrasi ke server (${guildId}).\x1b[0m`);
       } else {
         await rest.put(Routes.applicationCommands(clientId), { body: commandsArray });
-        console.log(`\x1b[32m[✅ COMMANDS]\x1b[0m Sukses didaftarkan secara Global.`);
+        console.log(`\x1b[42m\x1b[30m ✨ SUCCESS \x1b[0m \x1b[32mCommand berhasil diregistrasi secara Global.\x1b[0m`);
       }
     } catch (error) {
-      console.error('\x1b[31m[❌ COMMANDS]\x1b[0m Error memuat command:', error);
+      console.error('\x1b[41m\x1b[37m 💥 ERROR \x1b[0m \x1b[31mGagal memuat command:\x1b[0m', error);
     }
   }
 }
