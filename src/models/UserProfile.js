@@ -7,6 +7,9 @@ const UserProfile = sequelize.define('UserProfile', {
         allowNull: false, 
         primaryKey: true // Menjadikan userId sebagai kunci utama
     },
+
+    afk_reason: { type: DataTypes.STRING, allowNull: true },
+    afk_timestamp: { type: DataTypes.DATE, allowNull: true },
     
     // --- ECONOMY (Dipisah agar mudah di-ranking/leaderboard) ---
     economy_wallet: { type: DataTypes.INTEGER, defaultValue: 0 },
