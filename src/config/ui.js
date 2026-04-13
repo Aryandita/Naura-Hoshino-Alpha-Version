@@ -1,13 +1,16 @@
+const { ActivityType } = require('discord.js');
+
 module.exports = {
     colors: {
-        primary: '#00FFFF',
+        primary: '#00FFFF', // Aqua
         economy: '#FFD700',
         success: '#00FF00',
         error: '#FF0000',
-        kythiaDark: '#2b2d31',
-        accent: '#FF69B4'
+        dark: '#2b2d31',
+        accent: '#FF69B4'   // Pink Pastel
     },
-    // --- KONFIGURASI BANNER LOKAL DISINI ---
+
+    // --- KONFIGURASI BANNER LOKAL ---
     banners: {
         about: './assets/banner_about.png',
         ping: './assets/banner_ping.png',
@@ -18,6 +21,8 @@ module.exports = {
         rank: './assets/rank_card.png',
         economy: './assets/banner_economy.png'
     },
+
+    // --- KONFIGURASI EMOJI KUSTOM ---
     emojis: {
         success: '✅',
         error: '❌',
@@ -41,5 +46,32 @@ module.exports = {
         musicLyrics: '<:Lyrics:1484705972919337070>',
         musicShuffle: '<:Shuffle:1484705970469867641>',
         music247: '<:Afk:1484706070688698398>'
+    },
+
+    // --- KONFIGURASI STATUS BOT (PRESENCE) ---
+    activities: [
+        { name: 'Vermilion Server', type: ActivityType.Watching },
+        { name: 'Sistem Naura Versi 1.0.0', type: ActivityType.Playing },
+        { name: 'Instruksi Developer Aryan', type: ActivityType.Listening },
+        { name: 'Perintah dari Ryaa', type: ActivityType.Watching }
+    ],
+
+    // ==========================================
+    // 🛡️ SISTEM GETTER CERDAS (ANTI-CRASH)
+    // ==========================================
+    
+    // Mengecek emoji. Jika tidak ada, kembalikan emoji default 💠
+    getEmoji(name) {
+        return this.emojis[name] || '💠';
+    },
+
+    // Mengecek warna. Jika tidak ada, kembalikan Aqua (Primary)
+    getColor(name) {
+        return this.colors[name] || this.colors.primary;
+    },
+
+    // Mengecek banner. Jika tidak ada, kembalikan null agar Discord tidak error saat melampirkan file
+    getBanner(name) {
+        return this.banners[name] || null;
     }
 };
