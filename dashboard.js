@@ -1,0 +1,315 @@
+const express = require('express');
+const os = require('os');
+const { EmbedBuilder } = require('discord.js');
+const UserProfile = require('./src/models/UserProfile');
+
+module.exports = (client) => {
+    const app = express();
+    app.use(express.json()); // Middleware untuk membaca body JSON (Webhook)
+    
+    // Menggunakan port dari environment atau default ke 3070
+    const port = process.env.PORT || 3070;
+
+    // ==========================================
+    // 🗳️ API ENDPOINT: Webhook Vote (Top.gg)
+    // ==========================================
+    app.post('/api/webhook/vote', async (req, res) => {
+        // Autentikasi keamanan dari Top.gg
+        const auth = req.headers.authorization;
+        if (process.env.WEBHOOK_AUTH_VOTE && auth !== process.env.WEBHOOK_AUTH_VOTE) {
+            return res.status(401).send('Unauthorized');
+        }
+
+        const userId = req.body.user;
+        if (!userId) return res.status(400).send('Missing user ID');
+
+        try {
+            let [profile] = await UserProfile.findOrCreate({ where: { userId } });
+            
+            // Berikan Trial Premium 12 Jam
+            const newExpiry = new Date();
+            if (profile.isPremium && profile.premiumUntil && profile.premiumUntil > new Date()) {
+                newExpiry.setTime(profile.premiumUntil.getTime() + (12 * 60 * 60 * 1000));
+            } else {
+                newExpiry.setTime(newExpiry.getTime() + (12 * 60 * 60 * 1000));
+            }
+
+            profile.isPremium = true;
+            profile.premiumUntil = newExpiry;
+            await profile.save();
+
+            // DM User jika bot dapat mengirim pesan
+            try {
+                const userObj = await client.users.fetch(userId);
+                const embed = new EmbedBuilder()
+                    .setColor('#FFD700')
+                    .setTitle('🎉 Terima Kasih Telah Memilih Naura!')
+                    .setDescription(`Hai ${userObj.username}! Terima kasih atas VOTE kamu di server list hari ini.\n\nSebagai bentuk apresiasi, Naura telah memberikan fasilitas **TRIAL V.I.P PREMIUM selama 12 Jam** untukmu!\n\n⏳ **Status Aktif Sampai:** <t:${Math.floor(newExpiry.getTime() / 1000)}:R>`)
+                    .setFooter({ text: 'Naura Hoshino Auto-Vote System' });
+                await userObj.send({ embeds: [embed] }).catch(() => {}); // Abaikan jika DM ditutup
+            } catch (e) {}
+
+            res.status(200).send('Vote recorded successfully');
+        } catch (error) {
+            console.error('[WEBHOOK ERROR] Vote:', error);
+            res.status(500).send('Internal Server Error');
+        }
+    });
+
+    // ==========================================
+    // 💸 API ENDPOINT: Webhook Donasi (Saweria)
+    // ==========================================
+    app.post('/api/webhook/saweria', async (req, res) => {
+        // Autentikasi Token Rahasia Saweria
+        const token = req.headers['saweria-token'] || req.headers['authorization'];
+        if (process.env.WEBHOOK_AUTH_SAWERIA && token !== process.env.WEBHOOK_AUTH_SAWERIA) {
+            return res.status(401).send('Unauthorized');
+        }
+
+        /* 
+           Simulasi Struktur Body Webhook Saweria:
+           { amount: 35000, donator_name: "Aryan", message: "Ini ID ku ya: 123456789012345678" }
+        */
+        const amount = req.body.amount || req.body.total_amount || 0;
+        const message = req.body.message || '';
+        const donator_name = req.body.donator_name || req.body.donator || 'Seseorang';
+
+        if (!amount || !message) return res.status(400).send('Bad Request: Missing Amount or Message');
+
+        // Regex untuk menemukan deretan angka sepanjang 17-19 digit (ID Discord)
+        const idMatch = message.match(/\b\d{17,19}\b/);
+        if (!idMatch) {
+            console.log(`[SAWERIA] Donasi masuk dari ${donator_name} (Rp ${amount}), tapi tidak terdeteksi ID Discord di kolom pesan.`);
+            return res.status(200).send('OK: No Discord ID found in message');
+        }
+
+        const userId = idMatch[0];
+
+        // Kalkulasi Tier Premium
+        let daysToAdd = 0;
+        let tierName = '';
+        if (amount >= 75000) {
+            daysToAdd = 365; // Bestie (1 Tahun)
+            tierName = '👑 Naura Bestie (1 Tahun)';
+        } else if (amount >= 50000) {
+            daysToAdd = 180; // Friends (6 Bulan)
+            tierName = '💫 Naura Friends (6 Bulan)';
+        } else if (amount >= 35000) {
+            daysToAdd = 30; // Supporter (1 Bulan)
+            tierName = '🌟 Naura Supporter (1 Bulan)';
+        } else {
+            console.log(`[SAWERIA] Donasi dari ${donator_name} (Rp ${amount}) berhasil dicatat, namun kurang dari batas paket premium.`);
+            return res.status(200).send('OK: Amount below premium tier');
+        }
+
+        try {
+            let [profile] = await UserProfile.findOrCreate({ where: { userId } });
+            
+            const newExpiry = new Date();
+            if (profile.isPremium && profile.premiumUntil && profile.premiumUntil > new Date()) {
+                newExpiry.setTime(profile.premiumUntil.getTime() + (daysToAdd * 24 * 60 * 60 * 1000));
+            } else {
+                newExpiry.setTime(newExpiry.getTime() + (daysToAdd * 24 * 60 * 60 * 1000));
+            }
+
+            profile.isPremium = true;
+            profile.premiumUntil = newExpiry;
+            await profile.save();
+
+            // DM User
+            try {
+                const userObj = await client.users.fetch(userId);
+                const embed = new EmbedBuilder()
+                    .setColor('#FFD700')
+                    .setTitle('💖 Pembayaran V.I.P Terkonfirmasi!')
+                    .setDescription(`Terima kasih **${donator_name}** atas dukungan donasinya (Rp ${amount.toLocaleString('id-ID')})!\n\nStatus **Premium Naura** kamu telah otomatis diaktifkan oleh sistem. Nikmati seluruh layanan eksklusif kami!\n\n📦 **Paket Aktif:** ${tierName}\n⏳ **Berlaku Sampai:** <t:${Math.floor(newExpiry.getTime() / 1000)}:F>`)
+                    .setFooter({ text: 'Naura Automated Billing System' });
+                await userObj.send({ embeds: [embed] }).catch(()=>{});
+            } catch (e) {
+                console.log(`[SAWERIA] Gagal mengirim struk DM ke ${userId}. Mungkin DM terkunci.`);
+            }
+
+            console.log(`[SAWERIA] Sukses memberikan ${daysToAdd} hari Premium kepada ${userId}.`);
+            res.status(200).send('Donation Processed Successfully');
+        } catch (error) {
+            console.error('[WEBHOOK ERROR] Saweria:', error);
+            res.status(500).send('Internal Server Error');
+        }
+    });
+
+    // ==========================================
+    // ⚙️ API ENDPOINT: Mengirim Data Realtime Bot
+    // ==========================================
+    app.get('/api/stats', (req, res) => {
+        const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
+        const usedRam = ((os.totalmem() - os.freemem()) / 1024 / 1024 / 1024).toFixed(2);
+        
+        res.json({
+            botName: 'Naura Versi 1.0.0',
+            avatar: client.user.displayAvatarURL({ extension: 'png', size: 512 }),
+            servers: client.guilds.cache.size,
+            users: client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0),
+            ping: client.ws.ping,
+            uptime: formatUptime(client.uptime),
+            ram: `${usedRam} / ${totalRam} GB`,
+            developer: 'Developer Aryan'
+        });
+    });
+
+    // ==========================================
+    // 🌐 WEB ROUTE: Halaman Utama Dashboard
+    // ==========================================
+    app.get('/', (req, res) => {
+        res.send(`
+        <!DOCTYPE html>
+        <html lang="id">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Naura Versi 1.0.0 | Dashboard</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+            <style>
+                body {
+                    font-family: 'Outfit', sans-serif;
+                    background-color: #0b0c10;
+                    background-image: 
+                        radial-gradient(at 0% 0%, hsla(330, 80%, 20%, 0.4) 0px, transparent 50%),
+                        radial-gradient(at 100% 100%, hsla(250, 80%, 20%, 0.4) 0px, transparent 50%);
+                    background-attachment: fixed;
+                    color: #ffffff;
+                }
+                .font-cyber { font-family: 'Orbitron', sans-serif; }
+                .glass-card {
+                    background: rgba(255, 255, 255, 0.03);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid rgba(255, 182, 193, 0.15); /* Pink Pastel Border */
+                    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+                }
+                .text-glow { text-shadow: 0 0 10px rgba(255, 182, 193, 0.8); }
+                .accent-pink { color: #FFB6C1; }
+            </style>
+        </head>
+        <body class="min-h-screen flex flex-col items-center justify-center p-6">
+            
+            <header class="w-full max-w-5xl flex items-center justify-between py-6 mb-8 border-b border-pink-300/20">
+                <div class="flex items-center gap-4">
+                    <img id="botAvatar" src="https://via.placeholder.com/150" alt="Avatar" class="w-16 h-16 rounded-full border-2 border-pink-400 shadow-[0_0_15px_rgba(255,182,193,0.5)]">
+                    <div>
+                        <h1 class="text-3xl font-cyber font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-400 text-glow" id="botName">Loading...</h1>
+                        <p class="text-gray-400 text-sm tracking-widest uppercase">System Core Status: <span class="text-green-400 font-bold animate-pulse">ONLINE</span></p>
+                    </div>
+                </div>
+                <div class="text-right hidden md:block">
+                    <p class="text-sm text-gray-400">Developed by</p>
+                    <p class="text-lg font-bold accent-pink" id="devName">Loading...</p>
+                </div>
+            </header>
+
+            <main class="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                
+                <div class="glass-card rounded-2xl p-6 transition transform hover:-translate-y-1 hover:border-pink-400 duration-300">
+                    <h3 class="text-gray-400 text-sm uppercase tracking-wider mb-2 font-semibold">Ping / Latency</h3>
+                    <p class="text-4xl font-cyber accent-pink"><span id="statPing">0</span><span class="text-lg text-gray-500 ml-1">ms</span></p>
+                </div>
+
+                <div class="glass-card rounded-2xl p-6 transition transform hover:-translate-y-1 hover:border-pink-400 duration-300">
+                    <h3 class="text-gray-400 text-sm uppercase tracking-wider mb-2 font-semibold">Total Servers</h3>
+                    <p class="text-4xl font-cyber accent-pink" id="statServers">0</p>
+                </div>
+
+                <div class="glass-card rounded-2xl p-6 transition transform hover:-translate-y-1 hover:border-pink-400 duration-300">
+                    <h3 class="text-gray-400 text-sm uppercase tracking-wider mb-2 font-semibold">Total Users</h3>
+                    <p class="text-4xl font-cyber accent-pink" id="statUsers">0</p>
+                </div>
+
+                <div class="glass-card rounded-2xl p-6 transition transform hover:-translate-y-1 hover:border-pink-400 duration-300">
+                    <h3 class="text-gray-400 text-sm uppercase tracking-wider mb-2 font-semibold">System Uptime</h3>
+                    <p class="text-2xl font-cyber accent-pink mt-2" id="statUptime">0h 0m</p>
+                </div>
+
+            </main>
+
+            <section class="w-full max-w-5xl glass-card rounded-3xl p-8 mb-8">
+                <div class="border-b border-pink-300/20 pb-4 mb-6 flex justify-between items-end">
+                    <div>
+                        <h2 class="text-2xl font-cyber font-bold text-white">Vermilion Server</h2>
+                        <p class="text-gray-400 text-sm mt-1">Community Organization Structure</p>
+                    </div>
+                    <div class="px-4 py-1 bg-pink-500/20 rounded-full border border-pink-500/50 text-pink-300 text-xs font-bold tracking-widest uppercase">
+                        Verified Network
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-black/30 p-5 rounded-xl border border-white/5">
+                        <h4 class="text-pink-300 font-bold mb-1 text-lg">👑 High Command</h4>
+                        <p class="text-gray-300 text-sm">Owner & Developer</p>
+                    </div>
+                    <div class="bg-black/30 p-5 rounded-xl border border-white/5">
+                        <h4 class="text-purple-300 font-bold mb-1 text-lg">🛡️ Supervisor</h4>
+                        <p class="text-gray-300 text-sm">Moderation & Security</p>
+                    </div>
+                    <div class="bg-black/30 p-5 rounded-xl border border-white/5">
+                        <h4 class="text-blue-300 font-bold mb-1 text-lg">🛠️ Builder Team</h4>
+                        <p class="text-gray-300 text-sm">World Design & Architecture</p>
+                    </div>
+                    <div class="bg-black/30 p-5 rounded-xl border border-white/5">
+                        <h4 class="text-green-300 font-bold mb-1 text-lg">🎥 Media Team</h4>
+                        <p class="text-gray-300 text-sm">Content Creation & PR</p>
+                    </div>
+                </div>
+            </section>
+
+            <footer class="text-center text-gray-500 text-sm pb-8 mt-auto">
+                <p>&copy; 2026 Naura Hoshino System. Crafted with <span class="text-pink-500">♥</span> for Vermilion.</p>
+            </footer>
+
+            <script>
+                // Mengambil data dari API Endpoint setiap 5 detik
+                async function fetchStats() {
+                    try {
+                        const res = await fetch('/api/stats');
+                        const data = await res.json();
+                        
+                        document.getElementById('botName').innerText = data.botName;
+                        document.getElementById('botAvatar').src = data.avatar;
+                        document.getElementById('devName').innerText = data.developer;
+                        
+                        document.getElementById('statPing').innerText = data.ping;
+                        document.getElementById('statServers').innerText = data.servers;
+                        document.getElementById('statUsers').innerText = data.users.toLocaleString();
+                        document.getElementById('statUptime').innerText = data.uptime;
+                    } catch (err) {
+                        console.error('Gagal mengambil statistik:', err);
+                    }
+                }
+
+                fetchStats();
+                setInterval(fetchStats, 5000);
+            </script>
+        </body>
+        </html>
+        `);
+    });
+
+    app.listen(port, () => {
+        // FORMAT BARU: Log Web UI (Biru)
+        console.log(`\x1b[44m\x1b[37m 🌐 WEB UI \x1b[0m \x1b[34mWeb Dashboard Naura berhasil berjalan di http://localhost:${port}\x1b[0m`);
+    });
+};
+
+// Fungsi Utilitas untuk memformat Uptime Bot
+function formatUptime(ms) {
+    let totalSeconds = (ms / 1000);
+    let days = Math.floor(totalSeconds / 86400);
+    totalSeconds %= 86400;
+    let hours = Math.floor(totalSeconds / 3600);
+    totalSeconds %= 3600;
+    let minutes = Math.floor(totalSeconds / 60);
+    
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}

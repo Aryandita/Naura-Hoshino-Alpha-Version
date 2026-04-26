@@ -1,0 +1,60 @@
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../managers/dbManager');
+
+const UserProfile = sequelize.define('UserProfile', {
+    userId: { 
+        type: DataTypes.STRING, 
+        allowNull: false, 
+        primaryKey: true // Menjadikan userId sebagai kunci utama
+    },
+
+    afk_reason: { type: DataTypes.STRING, allowNull: true },
+    afk_timestamp: { type: DataTypes.DATE, allowNull: true },
+    
+    // --- ECONOMY (Dipisah agar mudah di-ranking/leaderboard) ---
+    economy_wallet: { type: DataTypes.INTEGER, defaultValue: 0 },
+    economy_bank: { type: DataTypes.INTEGER, defaultValue: 0 },
+    
+    // --- DATA FLEKSIBEL ---
+    // MySQL mendukung tipe JSON untuk menyimpan array/object
+    inventory: { type: DataTypes.JSON, defaultValue: [] },
+    cooldowns: { type: DataTypes.JSON, defaultValue: {} },
+    
+    // --- MINIGAMES ---
+    minigame_mathScore: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_triviaScore: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_rpsWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_tttWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_wordleWin: { type: DataTypes.INTEGER, defaultValue: 0 },
+    minigame_duelScore: { type: DataTypes.INTEGER, defaultValue: 0 },
+
+    isPremium: { 
+        type: DataTypes.BOOLEAN, 
+        defaultValue: false 
+    },
+    premiumUntil: { 
+        type: DataTypes.DATE, 
+        allowNull: true 
+    },
+
+    // --- MINECRAFT LINK ---
+    minecraft_ign: { type: DataTypes.STRING, allowNull: true },
+    minecraft_playtime: { type: DataTypes.INTEGER, defaultValue: 0 },
+    
+    // --- MUSIC PROFILE ---
+    music_tracksListened: { type: DataTypes.INTEGER, defaultValue: 0 },
+    music_totalDurationMs: { type: DataTypes.BIGINT, defaultValue: 0 },
+    music_favoriteGenre: { type: DataTypes.STRING, defaultValue: 'Belum Terdeteksi' },
+    music_lastListened: { type: DataTypes.STRING, defaultValue: 'Belum ada lagu' },
+    music_playlist: { type: DataTypes.JSON, defaultValue: [] },
+    
+    // --- LEVELING ---
+    leveling_xp: { type: DataTypes.INTEGER, defaultValue: 0 },
+    leveling_level: { type: DataTypes.INTEGER, defaultValue: 1 },
+    leveling_lastXp: { type: DataTypes.DATE, allowNull: true }
+}, {
+    tableName: 'user_profiles',
+    timestamps: false // Set true jika ingin kolom createdAt dan updatedAt otomatis
+});
+
+module.exports = UserProfile;
